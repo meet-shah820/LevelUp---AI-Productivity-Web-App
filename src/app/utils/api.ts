@@ -1,11 +1,16 @@
+const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
+function apiUrl(path: string): string {
+	return `${API_BASE}${path}`;
+}
+
 export async function getDashboard() {
-	const res = await fetch("/api/dashboard");
+	const res = await fetch(apiUrl("/api/dashboard"));
 	if (!res.ok) throw new Error("Failed to load dashboard");
 	return res.json();
 }
 
 export async function createGoal(payload: { title: string; category?: string; rarity?: string }) {
-	const res = await fetch("/api/goals", {
+	const res = await fetch(apiUrl("/api/goals"), {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -15,31 +20,31 @@ export async function createGoal(payload: { title: string; category?: string; ra
 }
 
 export async function getGoals() {
-	const res = await fetch("/api/goals");
+	const res = await fetch(apiUrl("/api/goals"));
 	if (!res.ok) throw new Error("Failed to load goals");
 	return res.json();
 }
 
 export async function deleteGoal(goalId: string) {
-	const res = await fetch(`/api/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
+	const res = await fetch(apiUrl(`/api/goals/${encodeURIComponent(goalId)}`), { method: "DELETE" });
 	if (!res.ok) throw new Error("Failed to delete goal");
 	return res.json();
 }
 
 export async function completeQuest(questId: string) {
-	const res = await fetch(`/api/quests/${questId}/complete`, { method: "PATCH" });
+	const res = await fetch(apiUrl(`/api/quests/${questId}/complete`), { method: "PATCH" });
 	if (!res.ok) throw new Error("Failed to complete quest");
 	return res.json();
 }
 
 export async function revertQuest(questId: string) {
-	const res = await fetch(`/api/quests/${questId}/revert`, { method: "PATCH" });
+	const res = await fetch(apiUrl(`/api/quests/${questId}/revert`), { method: "PATCH" });
 	if (!res.ok) throw new Error("Failed to revert quest");
 	return res.json();
 }
 
 export async function completeFocusSession(xp: number) {
-	const res = await fetch(`/api/focus/complete`, {
+	const res = await fetch(apiUrl(`/api/focus/complete`), {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ xp }),
@@ -56,25 +61,25 @@ export type FocusTodayStats = {
 };
 
 export async function getFocusTodayStats(): Promise<FocusTodayStats> {
-	const res = await fetch("/api/focus/today-stats");
+	const res = await fetch(apiUrl("/api/focus/today-stats"));
 	if (!res.ok) throw new Error("Failed to load focus stats");
 	return res.json();
 }
 
 export async function getAchievements() {
-	const res = await fetch("/api/achievements");
+	const res = await fetch(apiUrl("/api/achievements"));
 	if (!res.ok) throw new Error("Failed to load achievements");
 	return res.json();
 }
 
 export async function getAnalytics() {
-	const res = await fetch("/api/analytics");
+	const res = await fetch(apiUrl("/api/analytics"));
 	if (!res.ok) throw new Error("Failed to load analytics");
 	return res.json();
 }
 
 export async function getSkills() {
-	const res = await fetch("/api/skills");
+	const res = await fetch(apiUrl("/api/skills"));
 	if (!res.ok) throw new Error("Failed to load skills");
 	return res.json();
 }
@@ -85,7 +90,7 @@ export const PROFILE_UPDATED_EVENT = "app:profile-updated";
 export const RANK_UPDATED_EVENT = "app:rank-updated";
 
 export async function getProfile() {
-	const res = await fetch("/api/profile");
+	const res = await fetch(apiUrl("/api/profile"));
 	if (!res.ok) throw new Error("Failed to load profile");
 	return res.json();
 }
@@ -104,7 +109,7 @@ export async function patchProfile(payload: PatchProfilePayload) {
 	const body = Object.fromEntries(
 		Object.entries(payload).filter(([, v]) => v !== undefined),
 	) as Record<string, unknown>;
-	const res = await fetch("/api/profile", {
+	const res = await fetch(apiUrl("/api/profile"), {
 		method: "PATCH",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
@@ -115,13 +120,13 @@ export async function patchProfile(payload: PatchProfilePayload) {
 }
 
 export async function getSettings() {
-	const res = await fetch("/api/settings");
+	const res = await fetch(apiUrl("/api/settings"));
 	if (!res.ok) throw new Error("Failed to load settings");
 	return res.json();
 }
 
 export async function saveSettings(payload: { notifications: any }) {
-	const res = await fetch("/api/settings", {
+	const res = await fetch(apiUrl("/api/settings"), {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -131,7 +136,7 @@ export async function saveSettings(payload: { notifications: any }) {
 }
 
 export async function changePassword(payload: { username: string; currentPassword: string; newPassword: string }) {
-	const res = await fetch("/api/auth/change-password", {
+	const res = await fetch(apiUrl("/api/auth/change-password"), {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -141,7 +146,7 @@ export async function changePassword(payload: { username: string; currentPasswor
 }
 
 export async function resetAll() {
-	const res = await fetch("/api/admin/reset", { method: "POST" });
+	const res = await fetch(apiUrl("/api/admin/reset"), { method: "POST" });
 	if (!res.ok) throw new Error("Failed to reset");
 	return res.json();
 }
@@ -149,7 +154,7 @@ export async function resetAll() {
 export async function getQuests(timeframe: "daily" | "weekly" | "monthly", difficulty?: "easy" | "medium" | "hard") {
 	const params = new URLSearchParams({ timeframe });
 	if (difficulty) params.set("difficulty", difficulty);
-	const res = await fetch(`/api/quests?${params.toString()}`);
+	const res = await fetch(apiUrl(`/api/quests?${params.toString()}`));
 	if (!res.ok) throw new Error("Failed to load quests");
 	return res.json();
 }
@@ -183,14 +188,14 @@ export type QuestDetailsPayload = {
 };
 
 export async function getQuestDetails(questId: string): Promise<QuestDetailsPayload> {
-	const res = await fetch(`/api/quests/${encodeURIComponent(questId)}/details`);
+	const res = await fetch(apiUrl(`/api/quests/${encodeURIComponent(questId)}/details`));
 	const body = await res.json().catch(() => ({}));
 	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to load quest details");
 	return body as QuestDetailsPayload;
 }
 
 export async function getRecentHistory() {
-	const res = await fetch("/api/history/recent");
+	const res = await fetch(apiUrl("/api/history/recent"));
 	if (!res.ok) throw new Error("Failed to load history");
 	return res.json();
 }
@@ -213,7 +218,7 @@ export async function getStreakCalendar(fromISO?: string, toISO?: string): Promi
 	if (fromISO) params.set("from", fromISO);
 	if (toISO) params.set("to", toISO);
 	const qs = params.toString();
-	const res = await fetch(`/api/streak/calendar${qs ? `?${qs}` : ""}`);
+	const res = await fetch(apiUrl(`/api/streak/calendar${qs ? `?${qs}` : ""}`));
 	if (!res.ok) throw new Error("Failed to load streak calendar");
 	return res.json();
 }
