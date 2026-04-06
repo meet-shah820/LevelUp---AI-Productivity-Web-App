@@ -41,6 +41,11 @@ app.get("/api/health", (_req, res) => {
 	res.json({ ok: true });
 });
 
+// Basic root route (useful for Render/health checks and manual verification)
+app.get("/", (_req, res) => {
+	res.status(200).send("API is running");
+});
+
 app.use("/api/goals", goalsRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/quests", questsRouter);

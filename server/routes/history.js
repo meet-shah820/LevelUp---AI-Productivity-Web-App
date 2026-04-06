@@ -104,7 +104,21 @@ router.get("/recent", async (_req, res) => {
 			.limit(50)
 			.lean();
 		const items = [];
+		// If a quest was reverted, hide the earlier "Completed quest" notification for it.
+		// Since docs are sorted newest-first, we’ll see the revert first and then suppress the earlier completion.
+		const suppressedQuestIds = new Set();
 		for (const doc of raw) {
+			if (doc.type === "quest_complete") {
+				const qid = doc.questId ? String(doc.questId) : "";
+				const reverted = !!(doc.meta && doc.meta.reverted);
+				if (qid && (reverted || (doc.xpChange || 0) < 0)) {
+					suppressedQuestIds.add(qid);
+				}
+				if (qid && (doc.xpChange || 0) > 0 && suppressedQuestIds.has(qid)) {
+					// skip the earlier completion notification
+					continue;
+				}
+			}
 			const mapped = mapHistoryDoc(doc);
 			if (mapped) items.push(mapped);
 			if (items.length >= 10) break;

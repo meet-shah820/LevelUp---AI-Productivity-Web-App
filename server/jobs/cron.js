@@ -34,9 +34,7 @@ cron.schedule("* * * * *", async () => {
 		for await (const q of cursor) {
 			q.expiresAt = computeQuestExpiry(q.type, q.date || q.createdAt || now);
 			await q.save();
-		}
-
-		// Expire overdue quests that are not completed or already expired
+		}		// Expire overdue quests that are not completed or already expired
 		const res = await Quest.updateMany(
 			{
 				type: { $in: ["daily", "weekly", "monthly"] },

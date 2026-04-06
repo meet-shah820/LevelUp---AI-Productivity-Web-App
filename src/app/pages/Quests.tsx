@@ -234,6 +234,8 @@ export default function Quests() {
     if (questId && questId.length >= 12) {
       try {
         await revertQuest(questId);
+        // Refresh header XP + notifications (Layout listens to this event)
+        window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
       } catch {}
     }
   };

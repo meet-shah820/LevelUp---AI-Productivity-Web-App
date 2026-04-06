@@ -230,6 +230,8 @@ export default function Dashboard() {
       await revertQuest(questId);
       const fresh = await getDashboard();
       setData(fresh);
+      // Refresh header XP + notifications (Layout listens to this event)
+      window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
       try {
         const hist = await getRecentHistory();
         setActivities(hist.items || []);
