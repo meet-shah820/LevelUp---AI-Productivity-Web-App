@@ -4,8 +4,10 @@ import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 
+const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
+
 async function postJson(path: string, body: any) {
-	const res = await fetch(path, {
+	const res = await fetch(`${API_BASE}${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
