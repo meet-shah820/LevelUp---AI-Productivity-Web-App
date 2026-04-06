@@ -54,6 +54,34 @@ function notifTimeLabel(it: NotifItem) {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
+const NOTIF_LAST_SEEN_KEY = "notif_last_seen_at";
+
+function notifEpochMs(it: NotifItem): number {
+  const raw = it.at ?? it.occurredAt;
+  if (!raw) return 0;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function readLastSeenNotifMs(): number {
+  try {
+    const raw = localStorage.getItem(NOTIF_LAST_SEEN_KEY);
+    if (!raw) return 0;
+    const ms = Number(raw);
+    return Number.isFinite(ms) ? ms : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastSeenNotifMs(ms: number) {
+  try {
+    localStorage.setItem(NOTIF_LAST_SEEN_KEY, String(ms));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export function Layout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -62,6 +90,7 @@ export function Layout() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [dash, setDash] = useState<any>(null);
   const [recent, setRecent] = useState<NotifItem[]>([]);
+  const [lastSeenNotifMs, setLastSeenNotifMs] = useState<number>(() => readLastSeenNotifMs());
   useEffect(() => {
     let cancelled = false;
     async function loadHeaderData() {
@@ -132,10 +161,17 @@ export function Layout() {
         navigate("/");
     }
     setNotifOpen(false);
+    // Mark as seen when interacting with a notification.
+    const latest = recent.reduce((m, x) => Math.max(m, notifEpochMs(x)), 0);
+    if (latest > 0) {
+      setLastSeenNotifMs(latest);
+      writeLastSeenNotifMs(latest);
+    }
   }
 
   const xpPercentage = (user.currentXP / user.maxXP) * 100;
-  const hasNotifications = recent.length > 0;
+  const latestNotifMs = useMemo(() => recent.reduce((m, x) => Math.max(m, notifEpochMs(x)), 0), [recent]);
+  const hasUnreadNotifications = latestNotifMs > Math.max(0, lastSeenNotifMs);
 
   return (
     <div className="h-screen flex overflow-hidden bg-[#0B0F1A]">
@@ -318,10 +354,20 @@ export function Layout() {
               variant="ghost"
               size="icon"
               className="relative text-gray-400 hover:text-white"
-              onClick={() => setNotifOpen((v) => !v)}
+              onClick={() => {
+                setNotifOpen((v) => {
+                  const next = !v;
+                  // Mark as seen when opening the panel.
+                  if (next && latestNotifMs > 0) {
+                    setLastSeenNotifMs(latestNotifMs);
+                    writeLastSeenNotifMs(latestNotifMs);
+                  }
+                  return next;
+                });
+              }}
             >
               <Bell className="w-5 h-5" />
-              {hasNotifications && (
+              {hasUnreadNotifications && (
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#111827]" />
               )}
             </Button>

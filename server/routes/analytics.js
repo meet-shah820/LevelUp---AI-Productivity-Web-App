@@ -48,12 +48,43 @@ router.get("/", async (_req, res) => {
 		const xpSeries = Array.from(xpByDay.entries()).map(([date, xp]) => ({ date, xp: Math.round(xp) }));
 		const focusSeries = Array.from(focusByDay.entries()).map(([day, hours]) => ({ day, hours: Number(hours.toFixed(2)) }));
 
-		const questsCompleted = await History.countDocuments({ userId: user._id, type: "quest_complete", xpChange: { $gt: 0 } });
+		// Net quests completed: if a quest is undone, its earlier completion should not count.
+		// We compute this by summing quest_complete xpChange per questId (positive on complete, negative on revert)
+		// and counting questIds with net > 0.
+		const netQuestAgg = await History.aggregate([
+			{
+				$match: {
+					userId: user._id,
+					type: "quest_complete",
+					questId: { $ne: null },
+				},
+			},
+			{
+				$group: {
+					_id: "$questId",
+					net: { $sum: "$xpChange" },
+				},
+			},
+			{
+				$match: { net: { $gt: 0 } },
+			},
+			{
+				$count: "count",
+			},
+		]);
+		const questsCompleted = netQuestAgg?.[0]?.count ?? 0;
 		const activityStreak = await computeActivityStreakDays(user._id);
 
 		// This month aggregates
 		const monthHistory = await History.find({ userId: user._id, occurredAt: { $gte: monthStart } }).lean();
-		const monthQuests = monthHistory.filter((h) => h.type === "quest_complete" && h.xpChange > 0).length;
+		// Net month quests: completion undone within the same month should not count for month summary.
+		const monthQuestNetById = new Map();
+		for (const h of monthHistory) {
+			if (h.type !== "quest_complete" || !h.questId) continue;
+			const k = String(h.questId);
+			monthQuestNetById.set(k, (monthQuestNetById.get(k) || 0) + (h.xpChange || 0));
+		}
+		const monthQuests = Array.from(monthQuestNetById.values()).filter((net) => net > 0).length;
 		const monthFocusHours = Number(
 			(monthHistory.filter((h) => h.type === "focus_session").reduce((s, h) => s + (h.xpChange || 0), 0) / (9 * 60)).toFixed(1)
 		);

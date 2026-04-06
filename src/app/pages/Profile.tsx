@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Edit2, Award, Target, Clock, TrendingUp, Swords, Brain, Shield, Zap } from "lucide-react";
+import { Edit2, Award, Target, Clock, TrendingUp, Swords, Brain, Shield, Zap, Flame } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
@@ -16,10 +16,13 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { getProfile, patchProfile, PROFILE_UPDATED_EVENT } from "../utils/api";
+import { getProfile, getRecentHistory, patchProfile, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
 
 export default function Profile() {
   const [data, setData] = useState<any>(null);
+  const [recentItems, setRecentItems] = useState<
+    { id: string; type: "quest" | "level" | "achievement" | "focus" | "penalty"; message: string; xp?: number; at: string }[]
+  >([]);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameInput, setRenameInput] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -34,8 +37,28 @@ export default function Profile() {
     }
   };
 
+  const loadRecent = async () => {
+    try {
+      const hist = await getRecentHistory();
+      setRecentItems(hist.items || []);
+    } catch {
+      setRecentItems([]);
+    }
+  };
+
   useEffect(() => {
     void loadProfile();
+    void loadRecent();
+    const onRank = () => {
+      void loadProfile();
+      void loadRecent();
+    };
+    window.addEventListener(RANK_UPDATED_EVENT, onRank);
+    window.addEventListener(PROFILE_UPDATED_EVENT, onRank);
+    return () => {
+      window.removeEventListener(RANK_UPDATED_EVENT, onRank);
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onRank);
+    };
   }, []);
 
   const openRename = () => {
@@ -111,16 +134,13 @@ export default function Profile() {
 
   const achievements = (data?.recentAchievements || []).map((a: any) => ({ id: a.id, name: a.name, unlocked: true }));
 
-  const recentActivity = (data?.recentActivity || []).map((h: any, idx: number) => {
-    const type = h.type;
-    const text =
-      type === "quest_complete" ? `Completed: ${h.meta?.title || "Quest"}` :
-      type === "focus_session" ? "Focus session completed" :
-      type === "level_up" ? `Reached Level ${h.meta?.level}` :
-      type === "achievement_unlocked" ? `Achievement unlocked: ${h.meta?.achievementId}` :
-      type;
-    return { id: idx, type: type.includes("quest") ? "quest" : type.includes("achievement") ? "achievement" : type.includes("level") ? "level" : "skill", text, time: new Date(h.occurredAt).toLocaleString(), xp: h.xpChange };
-  });
+  const recentActivity = recentItems.map((it) => ({
+    id: it.id,
+    type: it.type,
+    text: it.message,
+    time: new Date(it.at).toLocaleString(),
+    xp: it.xp,
+  }));
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
@@ -325,13 +345,16 @@ export default function Profile() {
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                       {activity.type === "quest" && <Target className="w-5 h-5 text-white" />}
                       {activity.type === "level" && <TrendingUp className="w-5 h-5 text-white" />}
-                      {activity.type === "skill" && <Zap className="w-5 h-5 text-white" />}
+                      {activity.type === "focus" && <Clock className="w-5 h-5 text-white" />}
                       {activity.type === "achievement" && <Award className="w-5 h-5 text-white" />}
+                      {activity.type === "penalty" && <Flame className="w-5 h-5 text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white mb-1">{activity.text}</p>
-                      {activity.xp && (
-                        <p className="text-xs text-indigo-400 mb-1">+{activity.xp} XP</p>
+                      {typeof activity.xp === "number" && activity.xp !== 0 && (
+                        <p className={`text-xs mb-1 ${activity.xp > 0 ? "text-indigo-400" : "text-red-400"}`}>
+                          {activity.xp > 0 ? "+" : ""}{activity.xp} XP
+                        </p>
                       )}
                       <p className="text-xs text-gray-500">{activity.time}</p>
                     </div>

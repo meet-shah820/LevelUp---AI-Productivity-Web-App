@@ -50,7 +50,29 @@ function normalizeEmail(raw) {
 router.get("/", async (_req, res) => {
 	try {
 		const user = await getOrCreateDemoUser();
-		const questsCompleted = await History.countDocuments({ userId: user._id, type: "quest_complete", xpChange: { $gt: 0 } });
+		// Net quests completed: if a quest is undone, it should not count.
+		const netQuestAgg = await History.aggregate([
+			{
+				$match: {
+					userId: user._id,
+					type: "quest_complete",
+					questId: { $ne: null },
+				},
+			},
+			{
+				$group: {
+					_id: "$questId",
+					net: { $sum: "$xpChange" },
+				},
+			},
+			{
+				$match: { net: { $gt: 0 } },
+			},
+			{
+				$count: "count",
+			},
+		]);
+		const questsCompleted = netQuestAgg?.[0]?.count ?? 0;
 		const focusXp = (await History.find({ userId: user._id, type: "focus_session" }).lean()).reduce((s, h) => s + (h.xpChange || 0), 0);
 		const focusHours = Number((focusXp / (9 * 60)).toFixed(1));
 
