@@ -1,0 +1,780 @@
+import { useEffect, useState } from "react";
+import { motion } from "motion/react";
+import { Check, Clock, Zap, Target, Calendar, Filter, Signal } from "lucide-react";
+import { Card } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { Progress } from "../components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Quest, Goal, categoryColors, type GoalRarity } from "../utils/goalSystem";
+import { completeQuest, revertQuest, getQuests, getGoals, RANK_UPDATED_EVENT } from "../utils/api";
+import { useSearchParams } from "react-router-dom";
+import { QuestDetailDialog } from "../components/QuestDetailDialog";
+import { formatQuestTitleForDisplay } from "../utils/questDisplay";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+
+const MONGO_OBJECT_ID_RE = /^[a-f\d]{24}$/i;
+
+function normalizeGoalId(raw: unknown): string {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null && "$oid" in raw) return String((raw as { $oid: string }).$oid);
+  return String(raw);
+}
+
+const RARITIES: GoalRarity[] = ["common", "rare", "epic", "legendary", "mythic"];
+
+function normalizeRarity(raw: unknown): GoalRarity {
+  const s = String(raw ?? "").toLowerCase();
+  return RARITIES.includes(s as GoalRarity) ? (s as GoalRarity) : "common";
+}
+
+function mapDifficultyFromApi(raw: string | undefined): Quest["difficulty"] {
+  const s = String(raw ?? "medium").toLowerCase();
+  if (s === "easy") return "Easy";
+  if (s === "hard") return "Hard";
+  return "Medium";
+}
+
+function mapServerGoals(raw: any[]): Goal[] {
+  return (raw || []).map((g: any) => ({
+    id: normalizeGoalId(g._id ?? g.id),
+    title: g.title,
+    category: (g.category || "Personal") as Goal["category"],
+    rarity: normalizeRarity(g.rarity),
+    description: "",
+    progress: 0,
+    createdAt: g.createdAt,
+    color: categoryColors[(g.category || "Personal") as Goal["category"]],
+  }));
+}
+
+export default function Quests() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const goalIdFilter = searchParams.get("goalId") ?? "";
+  const difficultyFilter = searchParams.get("difficulty") ?? "";
+  const difficultyFilterIconClass =
+    difficultyFilter === "easy"
+      ? "text-green-400"
+      : difficultyFilter === "medium"
+        ? "text-amber-400"
+        : difficultyFilter === "hard"
+          ? "text-orange-400"
+          : "text-amber-400";
+  const highlightQuestParam = searchParams.get("highlightQuest");
+
+  const setGoalIdFilter = (goalId: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (goalId) n.set("goalId", goalId);
+        else n.delete("goalId");
+        return n;
+      },
+      { replace: true }
+    );
+  };
+
+  const setDifficultyFilter = (tier: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (tier && ["easy", "medium", "hard"].includes(tier)) n.set("difficulty", tier);
+        else n.delete("difficulty");
+        return n;
+      },
+      { replace: true }
+    );
+  };
+
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const allQuests: Quest[] = [];
+  const [quests, setQuests] = useState<Quest[]>(allQuests);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailQuestId, setDetailQuestId] = useState<string | null>(null);
+  // Per-card timers will update locally; avoid page-wide rerenders.
+
+  const openQuestDetail = (id: string) => {
+    if (!MONGO_OBJECT_ID_RE.test(id)) return;
+    setDetailQuestId(id);
+    setDetailOpen(true);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const mapRow = (q: any, timeframe: Quest["timeframe"]): Quest => ({
+      id: q.id,
+      goalId: q.goalId || "",
+      title: q.title,
+      description: "",
+      xp: q.xp,
+      completed: q.isCompleted,
+      timeframe,
+      difficulty: mapDifficultyFromApi(q.difficulty),
+      category: "",
+      expiresAt: q.expiresAt,
+    });
+    async function loadGoalsAndQuests() {
+      try {
+        // Goals first: GET /api/goals removes all quests when there are no active goals.
+        const res = await getGoals();
+        if (!cancelled) setGoals(mapServerGoals(res.goals || []));
+        const daily = await getQuests("daily");
+        const weekly = await getQuests("weekly");
+        const monthly = await getQuests("monthly");
+        const mapped: Quest[] = [
+          ...(daily.quests || []).map((q: any) => mapRow(q, "daily")),
+          ...(weekly.quests || []).map((q: any) => mapRow(q, "weekly")),
+          ...(monthly.quests || []).map((q: any) => mapRow(q, "monthly")),
+        ];
+        if (!cancelled) setQuests(mapped);
+      } catch {
+        if (!cancelled) {
+          setGoals([]);
+          setQuests(allQuests);
+        }
+      }
+    }
+    void loadGoalsAndQuests();
+    const onRank = () => {
+      void loadGoalsAndQuests();
+    };
+    window.addEventListener(RANK_UPDATED_EVENT, onRank);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RANK_UPDATED_EVENT, onRank);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!goalIdFilter) return;
+    if (goals.length === 0) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("goalId");
+          return n;
+        },
+        { replace: true }
+      );
+      return;
+    }
+    const exists = goals.some((g) => g.id === goalIdFilter);
+    if (!exists) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("goalId");
+          return n;
+        },
+        { replace: true }
+      );
+    }
+  }, [goals, goalIdFilter, setSearchParams]);
+
+  useEffect(() => {
+    if (!difficultyFilter) return;
+    if (!["easy", "medium", "hard"].includes(difficultyFilter)) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("difficulty");
+          return n;
+        },
+        { replace: true }
+      );
+    }
+  }, [difficultyFilter, setSearchParams]);
+
+  useEffect(() => {
+    if (!highlightQuestParam) return;
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`quest-card-${highlightQuestParam}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+    const clearHighlight = window.setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("highlightQuest");
+          return n;
+        },
+        { replace: true }
+      );
+    }, 6000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearHighlight);
+    };
+  }, [highlightQuestParam, setSearchParams]);
+
+  const handleCompleteQuest = async (questId: string) => {
+    setQuests(quests.map((q) => (q.id === questId ? { ...q, completed: true } : q)));
+    // If questId looks like a backend id, notify backend too
+    if (questId && questId.length >= 12) {
+      try {
+        await completeQuest(questId);
+        window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+      } catch {
+        // ignore errors for demo data
+      }
+    }
+  };
+
+  const handleUndoQuest = async (questId: string) => {
+    setQuests(quests.map((q) => (q.id === questId ? { ...q, completed: false } : q)));
+    if (questId && questId.length >= 12) {
+      try {
+        await revertQuest(questId);
+      } catch {}
+    }
+  };
+
+  const questsAfterGoal = goalIdFilter ? quests.filter((q) => q.goalId === goalIdFilter) : quests;
+  const questsInScope =
+    difficultyFilter && ["easy", "medium", "hard"].includes(difficultyFilter)
+      ? questsAfterGoal.filter((q) => q.difficulty.toLowerCase() === difficultyFilter)
+      : questsAfterGoal;
+
+  const dailyQuests = questsInScope.filter((q) => q.timeframe === "daily");
+  const weeklyQuests = questsInScope.filter((q) => q.timeframe === "weekly");
+  const monthlyQuests = questsInScope.filter((q) => q.timeframe === "monthly");
+
+  const countAll = questsInScope.length;
+  const countDaily = dailyQuests.length;
+  const countWeekly = weeklyQuests.length;
+  const countMonthly = monthlyQuests.length;
+
+  const dailyCompleted = dailyQuests.filter((q) => q.completed).length;
+  const weeklyCompleted = weeklyQuests.filter((q) => q.completed).length;
+  const monthlyCompleted = monthlyQuests.filter((q) => q.completed).length;
+
+  const dailyXP = dailyQuests.reduce((acc, q) => acc + (q.completed ? q.xp : 0), 0);
+  const weeklyXP = weeklyQuests.reduce((acc, q) => acc + (q.completed ? q.xp : 0), 0);
+  const monthlyXP = monthlyQuests.reduce((acc, q) => acc + (q.completed ? q.xp : 0), 0);
+
+  const getTimeframeIcon = (timeframe: Quest["timeframe"]) => {
+    switch (timeframe) {
+      case "daily":
+        return <Clock className="w-4 h-4" />;
+      case "weekly":
+        return <Calendar className="w-4 h-4" />;
+      case "monthly":
+        return <Target className="w-4 h-4" />;
+    }
+  };
+
+  const getTimeframeColor = (timeframe: Quest["timeframe"]) => {
+    switch (timeframe) {
+      case "daily":
+        return "from-blue-500 to-cyan-500";
+      case "weekly":
+        return "from-purple-500 to-pink-500";
+      case "monthly":
+        return "from-orange-500 to-red-500";
+    }
+  };
+
+  const getDifficultyColor = (difficulty: Quest["difficulty"]) => {
+    switch (difficulty) {
+      case "Easy":
+        return "bg-green-500/20 text-green-400 border-green-500/30";
+      case "Medium":
+        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+      case "Hard":
+        return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+    }
+  };
+
+  function formatRemaining(expiresAt?: string) {
+    if (!expiresAt) return "";
+    const now = Date.now();
+    const expiry = new Date(expiresAt).getTime();
+    const diffMs = Math.max(0, expiry - now);
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    if (days > 0) return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)} remaining`;
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)} remaining`;
+  }
+
+  function TimeRemaining({ expiresAt }: { expiresAt: string }) {
+    const [, setNow] = useState(Date.now());
+    useEffect(() => {
+      const id = window.setInterval(() => setNow(Date.now()), 1000);
+      return () => window.clearInterval(id);
+    }, []);
+    return (
+      <span className="text-xs text-gray-400 flex items-center gap-1">
+        <Clock className="w-3.5 h-3.5 text-gray-400" />
+        {formatRemaining(expiresAt)}
+      </span>
+    );
+  }
+
+  // Schedule a silent refresh when the nearest quest expiry is reached
+  useEffect(() => {
+    if (!quests || quests.length === 0) return;
+    const active = quests.filter((q) => !q.completed && q.expiresAt);
+    if (active.length === 0) return;
+    const soonest = active
+      .map((q) => new Date(q.expiresAt as string).getTime())
+      .filter((t) => !Number.isNaN(t))
+      .sort((a, b) => a - b)[0];
+    if (!soonest) return;
+    const now = Date.now();
+    const delay = Math.max(0, soonest - now + 1000); // +1s buffer
+    const to = window.setTimeout(async () => {
+      try {
+        const daily = await getQuests("daily");
+        const weekly = await getQuests("weekly");
+        const monthly = await getQuests("monthly");
+        const mapped: Quest[] = [
+          ...(daily.quests || []).map((q: any) => ({
+            id: q.id,
+            goalId: q.goalId || "",
+            title: q.title,
+            description: "",
+            xp: q.xp,
+            completed: q.isCompleted,
+            timeframe: "daily" as const,
+            difficulty: mapDifficultyFromApi(q.difficulty),
+            category: "",
+            expiresAt: q.expiresAt,
+          })),
+          ...(weekly.quests || []).map((q: any) => ({
+            id: q.id,
+            goalId: q.goalId || "",
+            title: q.title,
+            description: "",
+            xp: q.xp,
+            completed: q.isCompleted,
+            timeframe: "weekly" as const,
+            difficulty: mapDifficultyFromApi(q.difficulty),
+            category: "",
+            expiresAt: q.expiresAt,
+          })),
+          ...(monthly.quests || []).map((q: any) => ({
+            id: q.id,
+            goalId: q.goalId || "",
+            title: q.title,
+            description: "",
+            xp: q.xp,
+            completed: q.isCompleted,
+            timeframe: "monthly" as const,
+            difficulty: mapDifficultyFromApi(q.difficulty),
+            category: "",
+            expiresAt: q.expiresAt,
+          })),
+        ];
+        setQuests(mapped);
+      } catch {
+        // ignore transient fetch errors
+      }
+    }, delay);
+    return () => window.clearTimeout(to);
+  }, [quests]);
+
+  const QuestCard = ({
+    quest,
+    onOpenDetail,
+    highlightQuestId,
+  }: {
+    quest: Quest;
+    onOpenDetail: (id: string) => void;
+    highlightQuestId: string | null;
+  }) => {
+    const goal = goals.find((g) => g.id === quest.goalId);
+    const displayTitle = formatQuestTitleForDisplay(quest.title, goal?.title);
+    const isHighlighted = Boolean(highlightQuestId && quest.id === highlightQuestId);
+
+    return (
+      <motion.div
+        id={`quest-card-${quest.id}`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.02 }}
+        transition={{ type: "spring", stiffness: 300 }}
+        className={isHighlighted ? "rounded-xl ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0B0F1A] shadow-lg shadow-amber-500/20" : ""}
+      >
+        <Card
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpenDetail(quest.id);
+            }
+          }}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("button")) return;
+            onOpenDetail(quest.id);
+          }}
+          className={`overflow-hidden border transition-all text-left ${
+            MONGO_OBJECT_ID_RE.test(quest.id) ? "cursor-pointer" : "cursor-default"
+          } ${
+            quest.completed
+              ? "bg-green-500/10 border-green-500/30"
+              : `${goalIdFilter && quest.goalId === goalIdFilter ? "ring-2 ring-indigo-500/60" : ""} bg-[#111827] border-purple-500/20 hover:border-purple-500/40`
+          }`}
+        >
+          <div className="p-5 space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge
+                    variant="outline"
+                    className={`${getDifficultyColor(quest.difficulty)} text-xs`}
+                  >
+                    {quest.difficulty}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-purple-500/30 text-purple-400 text-xs"
+                  >
+                    <div className="flex items-center gap-1">
+                      {getTimeframeIcon(quest.timeframe)}
+                      <span className="capitalize">{quest.timeframe}</span>
+                    </div>
+                  </Badge>
+                  {quest.expiresAt && !quest.completed && <TimeRemaining expiresAt={quest.expiresAt} />}
+                </div>
+                <h3
+                  className={`text-lg font-bold ${
+                    quest.completed ? "text-green-400 line-through" : "text-white"
+                  }`}
+                >
+                  {displayTitle}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {MONGO_OBJECT_ID_RE.test(quest.id) ? "Click the card for full briefing from the System" : quest.description || "—"}
+                </p>
+              </div>
+
+              {quest.completed && (
+                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50 flex-shrink-0">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              )}
+            </div>
+
+            {/* Goal Link */}
+            {goal && (
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-md bg-gradient-to-br ${goal.color.from} ${goal.color.to} flex items-center justify-center`}>
+                  <Target className="w-3 h-3 text-white" />
+                </div>
+                <span className="text-xs text-gray-400">
+                  Contributing to: <span className="text-white">{goal.title}</span>
+                </span>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-purple-500/10">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-indigo-400" />
+                  <span className="text-sm font-bold text-indigo-400">+{quest.xp} XP</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+              {!quest.completed && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCompleteQuest(quest.id);
+                  }}
+                  size="sm"
+                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
+                >
+                  Complete
+                </Button>
+              )}
+              {quest.completed && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUndoQuest(quest.id);
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="border-purple-500/30 text-white hover:bg-white/5"
+                >
+                  Undo
+                </Button>
+              )}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+    );
+  };
+
+  return (
+    <div className="min-h-full p-4 lg:p-8 space-y-6">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-2"
+      >
+        <h1 className="text-3xl font-bold text-white">Quests</h1>
+        <p className="text-gray-400">Complete quests to gain XP and achieve your goals</p>
+      </motion.div>
+
+      {/* Stats Overview */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Daily Stats */}
+          <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/30 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/50">
+                  <Clock className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-400">Daily Quests</h3>
+                  <p className="text-2xl font-bold text-white">
+                    {dailyCompleted}/{dailyQuests.length}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-cyan-400">{dailyXP} XP</p>
+                <p className="text-xs text-gray-400">Earned</p>
+              </div>
+            </div>
+            <Progress value={dailyQuests.length ? (dailyCompleted / dailyQuests.length) * 100 : 0} className="h-2" />
+          </Card>
+
+          {/* Weekly Stats */}
+          <Card className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-purple-500/30 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50">
+                  <Calendar className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-400">Weekly Quests</h3>
+                  <p className="text-2xl font-bold text-white">
+                    {weeklyCompleted}/{weeklyQuests.length}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-pink-400">{weeklyXP} XP</p>
+                <p className="text-xs text-gray-400">Earned</p>
+              </div>
+            </div>
+            <Progress value={weeklyQuests.length ? (weeklyCompleted / weeklyQuests.length) * 100 : 0} className="h-2" />
+          </Card>
+
+          {/* Monthly Stats */}
+          <Card className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/30 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg shadow-orange-500/50">
+                  <Target className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-400">Monthly Quests</h3>
+                  <p className="text-2xl font-bold text-white">
+                    {monthlyCompleted}/{monthlyQuests.length}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-orange-400">{monthlyXP} XP</p>
+                <p className="text-xs text-gray-400">Earned</p>
+              </div>
+            </div>
+            <Progress value={monthlyQuests.length ? (monthlyCompleted / monthlyQuests.length) * 100 : 0} className="h-2" />
+          </Card>
+        </div>
+      </motion.div>
+
+      {/* Quests Tabs */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <Tabs defaultValue="all" className="space-y-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+            <TabsList className="bg-[#111827] border border-purple-500/20 p-1 flex flex-wrap gap-1 w-fit max-w-full">
+              <TabsTrigger value="all" className="group data-[state=active]:bg-purple-500/20 gap-2">
+                <span>All Quests</span>
+                <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-400 group-data-[state=active]:text-white">
+                  {countAll}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="daily" className="group data-[state=active]:bg-blue-500/20 gap-2">
+                <span>Daily</span>
+                <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-400 group-data-[state=active]:text-white">
+                  {countDaily}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="weekly" className="group data-[state=active]:bg-purple-500/20 gap-2">
+                <span>Weekly</span>
+                <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-400 group-data-[state=active]:text-white">
+                  {countWeekly}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="monthly" className="group data-[state=active]:bg-orange-500/20 gap-2">
+                <span>Monthly</span>
+                <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-400 group-data-[state=active]:text-white">
+                  {countMonthly}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end w-full lg:w-auto min-w-0">
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto min-w-0">
+                <Filter className="w-4 h-4 text-purple-400 shrink-0" aria-hidden />
+                <Select
+                  value={goalIdFilter || "all"}
+                  onValueChange={(v) => setGoalIdFilter(v === "all" ? null : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-[min(100%,240px)] bg-[#111827] border-purple-500/30 text-white">
+                    <SelectValue placeholder="Filter by goal" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#111827] border-purple-500/30 text-white max-h-72">
+                    <SelectItem value="all">All goals</SelectItem>
+                    {goals.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto min-w-0">
+                <Signal className={`w-4 h-4 shrink-0 ${difficultyFilterIconClass}`} aria-hidden />
+                <Select
+                  value={difficultyFilter && ["easy", "medium", "hard"].includes(difficultyFilter) ? difficultyFilter : "all"}
+                  onValueChange={(v) => setDifficultyFilter(v === "all" ? null : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-[min(100%,220px)] bg-[#111827] border-purple-500/30 text-white">
+                    <SelectValue placeholder="Difficulty" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#111827] border-purple-500/30 text-white">
+                    <SelectItem value="all">All difficulties</SelectItem>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <TabsContent value="all" className="space-y-4">
+            {questsInScope.length === 0 ? (
+              <Card className="bg-[#111827] border-purple-500/20 p-12 text-center">
+                <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">
+                  {quests.length === 0 ? "No Quests Available" : "No matching quests"}
+                </h3>
+                <p className="text-gray-400">
+                  {quests.length === 0
+                    ? "Add goals to generate personalized quests"
+                    : "Try changing the goal or difficulty filter."}
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {questsInScope.map((quest) => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    onOpenDetail={openQuestDetail}
+                    highlightQuestId={highlightQuestParam}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="daily" className="space-y-4">
+            {dailyQuests.length === 0 ? (
+              <p className="text-center text-sm text-gray-500 py-8">No daily quests in this view.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {dailyQuests.map((quest) => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    onOpenDetail={openQuestDetail}
+                    highlightQuestId={highlightQuestParam}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="weekly" className="space-y-4">
+            {weeklyQuests.length === 0 ? (
+              <p className="text-center text-sm text-gray-500 py-8">No weekly quests in this view.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {weeklyQuests.map((quest) => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    onOpenDetail={openQuestDetail}
+                    highlightQuestId={highlightQuestParam}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="monthly" className="space-y-4">
+            {monthlyQuests.length === 0 ? (
+              <p className="text-center text-sm text-gray-500 py-8">No monthly quests in this view.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {monthlyQuests.map((quest) => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    onOpenDetail={openQuestDetail}
+                    highlightQuestId={highlightQuestParam}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </motion.div>
+
+      <QuestDetailDialog
+        open={detailOpen}
+        onOpenChange={(o) => {
+          setDetailOpen(o);
+          if (!o) setDetailQuestId(null);
+        }}
+        questId={detailQuestId}
+      />
+    </div>
+  );
+}
