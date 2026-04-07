@@ -128,8 +128,8 @@ export function Layout() {
       { name: "Quests", href: "/quests", icon: Target },
       { name: "Goals", href: "/goals", icon: Flag },
       { name: "Focus Mode", href: "/focus", icon: Focus },
-      // Starter+ feature example
-      ...(t >= 1 ? [{ name: "Skills", href: "/skills", icon: Zap }] : []),
+      // Skills is visible for all tiers again
+      { name: "Skills", href: "/skills", icon: Zap },
       // Pro+ feature example
       ...(t >= 2 ? [{ name: "Analytics", href: "/analytics", icon: BarChart3 }] : []),
       { name: "Streak", href: "/streak", icon: Calendar },
