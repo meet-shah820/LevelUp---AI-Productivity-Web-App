@@ -32,8 +32,8 @@ export function ProtectedLayout() {
 	}, []);
 
 	if (!checked) return null;
-	if (needsOnboarding && location.pathname !== "/pricing") {
-		return <Navigate to="/pricing?onboarding=1" replace />;
+	if (needsOnboarding && location.pathname !== "/settings") {
+		return <Navigate to="/settings?onboarding=1#billing" replace />;
 	}
 	return <Outlet />;
 }

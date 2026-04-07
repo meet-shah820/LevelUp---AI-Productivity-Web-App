@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { motion } from "motion/react";
-import { User, Bell, Lock, LogOut } from "lucide-react";
+import { User, Bell, Lock, LogOut, CreditCard } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,6 +9,7 @@ import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { BillingSection } from "../components/BillingSection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +51,7 @@ export default function Settings() {
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
-  const [active, setActive] = useState<"profile" | "notifications" | "security">("profile");
+  const [active, setActive] = useState<"profile" | "notifications" | "security" | "billing">("profile");
   const [notif, setNotif] = useState({
     questReminders: true,
     levelUp: true,
@@ -76,6 +77,17 @@ export default function Settings() {
       } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get("onboarding") === "1") {
+      setActive("billing");
+      // Scroll to billing section when present
+      setTimeout(() => {
+        document.getElementById("billing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    }
   }, []);
 
   const loadProfileFields = useCallback(async () => {
@@ -302,6 +314,17 @@ export default function Settings() {
                 <Lock className="w-5 h-5" />
                 <span className="text-sm font-medium">Security</span>
               </button>
+              <button
+                onClick={() => setActive("billing")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  active === "billing"
+                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
+                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <CreditCard className="w-5 h-5" />
+                <span className="text-sm font-medium">Billing</span>
+              </button>
             </nav>
           </Card>
         </motion.div>
@@ -361,6 +384,11 @@ export default function Settings() {
                   </div>
                   <p className="text-xs text-gray-400">JPG, PNG or GIF. Max size of 2MB</p>
                 </div>
+              </div>
+
+              {/* Billing (below avatar options) */}
+              <div className="mb-6">
+                <BillingSection compactTitle />
               </div>
 
               <div className="space-y-4">
@@ -581,6 +609,19 @@ export default function Settings() {
                   </Button>
                 </div>
               </div>
+            </Card>
+          </motion.div>
+          )}
+
+          {/* Billing */}
+          {active === "billing" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+          >
+            <Card className="bg-[#111827] border-purple-500/20 p-6">
+              <BillingSection />
             </Card>
           </motion.div>
           )}
