@@ -27,7 +27,7 @@ const envPath = path.join(rootDir, ".env");
 const envExamplePath = path.join(rootDir, "env.example");
 if (fs.existsSync(envPath)) {
 	dotenv.config({ path: envPath });
-} else if (fs.existsSync(envExamplePath)) {
+} else if (process.env.NODE_ENV !== "production" && fs.existsSync(envExamplePath)) {
 	dotenv.config({ path: envExamplePath });
 }
 

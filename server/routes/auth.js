@@ -10,6 +10,12 @@ function makeJwt(user) {
 	return jwt.sign({ uid: user._id, username: user.username }, JWT_SECRET, { expiresIn: "7d" });
 }
 
+function isPlaceholder(v) {
+	const s = String(v || "").trim();
+	if (!s) return true;
+	return s === "your_google_client_id" || s === "your_google_client_secret";
+}
+
 function getServerOrigin(req) {
 	const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http").toString().split(",")[0].trim();
 	const host = (req.headers["x-forwarded-host"] || req.get("host") || "localhost:5000").toString().split(",")[0].trim();
@@ -75,7 +81,7 @@ router.get("/google", (req, res) => {
 	try {
 		const clientId = process.env.GOOGLE_CLIENT_ID;
 		const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getServerOrigin(req)}/api/auth/google/callback`;
-		if (!clientId) return res.status(500).send("Google OAuth env not configured");
+		if (!clientId || isPlaceholder(clientId)) return res.status(500).send("Google OAuth env not configured");
 
 		const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
 		u.searchParams.set("client_id", clientId);
@@ -106,7 +112,9 @@ router.get("/google/callback", async (req, res) => {
 		const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 		const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getServerOrigin(req)}/api/auth/google/callback`;
 		const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT || "http://localhost:5173/auth/callback";
-		if (!clientId || !clientSecret) return res.status(500).send("Google OAuth env not configured");
+		if (!clientId || !clientSecret || isPlaceholder(clientId) || isPlaceholder(clientSecret)) {
+			return res.status(500).send("Google OAuth env not configured");
+		}
 
 		// Exchange code -> tokens
 		const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
