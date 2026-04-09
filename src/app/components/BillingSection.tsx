@@ -15,10 +15,27 @@ import {
 
 type Tier = "free" | "starter" | "pro" | "elite";
 
+function tierPriceHeadline(id: Tier, display?: BillingStatus["priceDisplay"]): string {
+	if (id === "free") return "$0";
+	if (display) {
+		const d = display[id];
+		if (d) return d;
+	}
+	switch (id) {
+		case "starter":
+			return "$7";
+		case "pro":
+			return "$15";
+		case "elite":
+			return "$29";
+		default:
+			return "";
+	}
+}
+
 const TIERS: {
 	id: Tier;
 	name: string;
-	priceLabel: string;
 	description: string;
 	features: string[];
 	cta: string;
@@ -26,7 +43,6 @@ const TIERS: {
 	{
 		id: "free",
 		name: "Free",
-		priceLabel: "$0",
 		description: "Try the core experience.",
 		features: ["Quests & goals", "Basic analytics", "Streak tracking"],
 		cta: "Current plan",
@@ -34,7 +50,6 @@ const TIERS: {
 	{
 		id: "starter",
 		name: "Starter",
-		priceLabel: "Monthly",
 		description: "For consistent daily progress.",
 		features: ["Everything in Free", "More quests per timeframe", "Priority rank recalculation"],
 		cta: "Choose Starter",
@@ -42,7 +57,6 @@ const TIERS: {
 	{
 		id: "pro",
 		name: "Pro",
-		priceLabel: "Monthly",
 		description: "For serious execution mode.",
 		features: ["Everything in Starter", "Advanced analytics", "Faster AI suggestions (if enabled)"],
 		cta: "Choose Pro",
@@ -50,7 +64,6 @@ const TIERS: {
 	{
 		id: "elite",
 		name: "Elite",
-		priceLabel: "Monthly",
 		description: "Maximum performance + status.",
 		features: ["Everything in Pro", "Exclusive cosmetics/badges", "Early features access"],
 		cta: "Choose Elite",
@@ -202,8 +215,10 @@ export function BillingSection({ onboarding = false, compactTitle = false }: { o
 								</div>
 
 								<div className="mt-5">
-									<p className="text-3xl font-bold text-white">{t.priceLabel}</p>
-									<p className="text-xs text-gray-500 mt-1">{t.id === "free" ? "No card required" : "Billed via Stripe"}</p>
+									<p className="text-3xl font-bold text-white">{tierPriceHeadline(t.id, status?.priceDisplay)}</p>
+									<p className="text-xs text-gray-500 mt-1">
+										{t.id === "free" ? "No card required" : "per month • Billed via Stripe"}
+									</p>
 								</div>
 
 								<ul className="mt-5 space-y-2">

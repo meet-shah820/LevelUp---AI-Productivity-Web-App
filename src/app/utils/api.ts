@@ -241,6 +241,8 @@ export type BillingStatus = {
 	onboarded: boolean;
 	stripeStatus: string;
 	currentPeriodEndMs: number;
+	/** Amounts shown on plan cards; from server .env (STRIPE_PRICE_* or *_LABEL). */
+	priceDisplay?: { starter: string; pro: string; elite: string };
 };
 
 export async function getBillingStatus(): Promise<BillingStatus> {

@@ -39,14 +39,26 @@ function stripeClient() {
 	return new Stripe(key, { apiVersion: "2024-06-20" });
 }
 
+/** Trim and strip accidental quotes from .env (e.g. STRIPE_PRICE_X="price_..."). */
+function envStripePrice(name) {
+	let s = String(process.env[name] || "").trim();
+	if (
+		(s.startsWith('"') && s.endsWith('"') && s.length >= 2) ||
+		(s.startsWith("'") && s.endsWith("'") && s.length >= 2)
+	) {
+		s = s.slice(1, -1).trim();
+	}
+	return s;
+}
+
 function tierToPriceId(tier) {
 	switch (tier) {
 		case "starter":
-			return process.env.STRIPE_PRICE_STARTER;
+			return envStripePrice("STRIPE_PRICE_STARTER") || null;
 		case "pro":
-			return process.env.STRIPE_PRICE_PRO;
+			return envStripePrice("STRIPE_PRICE_PRO") || null;
 		case "elite":
-			return process.env.STRIPE_PRICE_ELITE;
+			return envStripePrice("STRIPE_PRICE_ELITE") || null;
 		default:
 			return null;
 	}
@@ -56,11 +68,43 @@ function isStripePriceId(v) {
 	return typeof v === "string" && /^price_[a-zA-Z0-9]+$/.test(v.trim());
 }
 
+/** Human-readable amount for billing cards (from env). */
+function normalizeMoneyLabel(raw, fallback) {
+	const v = String(raw || "").trim();
+	if (!v) return fallback;
+	if (v.startsWith("$")) return v;
+	if (/^[\d.,]+$/.test(v)) return `$${v}`;
+	return v;
+}
+
+/**
+ * Card headline per tier. Uses STRIPE_PRICE_* when it is not a Stripe Price id (e.g. $9.99).
+ * When STRIPE_PRICE_* is price_..., use STRIPE_PRICE_*_LABEL (e.g. STRIPE_PRICE_PRO_LABEL=$9.99).
+ */
+function getPriceDisplayMap() {
+	const fallback = { starter: "$7", pro: "$15", elite: "$29" };
+	function one(priceEnv, labelEnv, fb) {
+		const id = envStripePrice(priceEnv);
+		if (!id) return fb;
+		if (isStripePriceId(id)) {
+			const lab = envStripePrice(labelEnv);
+			return lab ? normalizeMoneyLabel(lab, fb) : fb;
+		}
+		return normalizeMoneyLabel(id, fb);
+	}
+	return {
+		starter: one("STRIPE_PRICE_STARTER", "STRIPE_PRICE_STARTER_LABEL", fallback.starter),
+		pro: one("STRIPE_PRICE_PRO", "STRIPE_PRICE_PRO_LABEL", fallback.pro),
+		elite: one("STRIPE_PRICE_ELITE", "STRIPE_PRICE_ELITE_LABEL", fallback.elite),
+	};
+}
+
 function priceIdToTier(priceId) {
 	if (!priceId) return "free";
-	if (priceId === process.env.STRIPE_PRICE_STARTER) return "starter";
-	if (priceId === process.env.STRIPE_PRICE_PRO) return "pro";
-	if (priceId === process.env.STRIPE_PRICE_ELITE) return "elite";
+	const pid = String(priceId).trim();
+	if (pid === envStripePrice("STRIPE_PRICE_STARTER")) return "starter";
+	if (pid === envStripePrice("STRIPE_PRICE_PRO")) return "pro";
+	if (pid === envStripePrice("STRIPE_PRICE_ELITE")) return "elite";
 	return "free";
 }
 
@@ -87,6 +131,7 @@ router.get("/status", requireAuth, async (req, res) => {
 			onboarded: !!user?.billing?.onboarded,
 			stripeStatus: user?.billing?.stripeStatus || "",
 			currentPeriodEndMs: user?.billing?.currentPeriodEndMs || 0,
+			priceDisplay: getPriceDisplayMap(),
 		});
 	} catch (e) {
 		// eslint-disable-next-line no-console
@@ -168,6 +213,16 @@ router.post("/checkout", requireAuth, async (req, res) => {
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error(e);
+		const code = e?.code ?? e?.raw?.code;
+		const param = e?.param ?? e?.raw?.param;
+		if (code === "resource_missing" && String(param || "").includes("price")) {
+			const sk = String(process.env.STRIPE_SECRET_KEY || "");
+			const mode = sk.startsWith("sk_live") ? "live" : sk.startsWith("sk_test") ? "test" : "unknown";
+			return res.status(400).json({
+				error:
+					`Stripe could not find this Price ID in ${mode} mode. Copy each price's API id from the same Stripe account, with the dashboard toggle set to ${mode === "live" ? "Live" : "Test"} (Test prices only work with sk_test_... keys).`,
+			});
+		}
 		return res.status(500).json({ error: "Failed to start checkout" });
 	}
 });
@@ -210,6 +265,7 @@ router.post("/refresh", requireAuth, async (req, res) => {
 				onboarded: !!user.billing?.onboarded,
 				stripeStatus: user.billing?.stripeStatus || "",
 				currentPeriodEndMs: user.billing?.currentPeriodEndMs || 0,
+				priceDisplay: getPriceDisplayMap(),
 			});
 		}
 
@@ -237,6 +293,7 @@ router.post("/refresh", requireAuth, async (req, res) => {
 			onboarded: !!fresh?.billing?.onboarded,
 			stripeStatus: fresh?.billing?.stripeStatus || "",
 			currentPeriodEndMs: fresh?.billing?.currentPeriodEndMs || 0,
+			priceDisplay: getPriceDisplayMap(),
 		});
 	} catch (e) {
 		// eslint-disable-next-line no-console
