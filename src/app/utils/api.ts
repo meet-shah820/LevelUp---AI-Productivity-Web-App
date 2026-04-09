@@ -1,4 +1,25 @@
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
+
+const BILLING_ONBOARDED_KEY = "app_billing_onboarded";
+
+/** Persist billing onboarding flag so the shell can render without a blank gate after login. */
+export function syncBillingOnboardedCache(onboarded: boolean) {
+	if (typeof window === "undefined") return;
+	localStorage.setItem(BILLING_ONBOARDED_KEY, onboarded ? "1" : "0");
+}
+
+export function clearBillingOnboardedCache() {
+	if (typeof window === "undefined") return;
+	localStorage.removeItem(BILLING_ONBOARDED_KEY);
+}
+
+export function getBillingOnboardedCache(): boolean | null {
+	if (typeof window === "undefined") return null;
+	const v = localStorage.getItem(BILLING_ONBOARDED_KEY);
+	if (v === "1") return true;
+	if (v === "0") return false;
+	return null;
+}
 function apiUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }

@@ -3,7 +3,15 @@ import { motion } from "motion/react";
 import { Check, CreditCard } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { chooseFreePlan, getBillingStatus, openBillingPortal, refreshBilling, startCheckout, type BillingStatus } from "../utils/api";
+import {
+	chooseFreePlan,
+	getBillingStatus,
+	openBillingPortal,
+	refreshBilling,
+	startCheckout,
+	syncBillingOnboardedCache,
+	type BillingStatus,
+} from "../utils/api";
 
 type Tier = "free" | "starter" | "pro" | "elite";
 
@@ -66,6 +74,10 @@ export function BillingSection({ onboarding = false, compactTitle = false }: { o
 	const [status, setStatus] = useState<BillingStatus | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [msg, setMsg] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (status != null) syncBillingOnboardedCache(status.onboarded);
+	}, [status?.onboarded]);
 
 	useEffect(() => {
 		(async () => {

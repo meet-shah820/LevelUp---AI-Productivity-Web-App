@@ -23,6 +23,7 @@ import {
 } from "../components/ui/alert-dialog";
 import {
   changePassword,
+  clearBillingOnboardedCache,
   getSettings,
   resetAll,
   saveSettings,
@@ -726,6 +727,7 @@ export default function Settings() {
               className="w-full border-purple-500/30 text-white hover:bg-white/5"
               onClick={() => {
                 localStorage.removeItem("auth_token");
+                clearBillingOnboardedCache();
                 window.location.href = "/auth";
               }}
             >

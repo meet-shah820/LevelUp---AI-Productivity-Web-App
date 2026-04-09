@@ -1,20 +1,26 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { syncBillingOnboardedCache } from "../utils/api";
 
 export default function AuthCallback() {
 	const [params] = useSearchParams();
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const token = params.get("token");
+		if (!token) {
+			window.location.replace("/auth");
+			return;
+		}
+		localStorage.setItem("auth_token", token);
 		const username = params.get("username");
-		if (token) localStorage.setItem("auth_token", token);
 		if (username) localStorage.setItem("last_username", username);
-		window.location.href = "/";
+		const onboarded = params.get("onboarded");
+		if (onboarded === "0" || onboarded === "1") {
+			syncBillingOnboardedCache(onboarded === "1");
+		}
+		const dest = onboarded === "0" ? "/settings?onboarding=1#billing" : "/";
+		window.location.replace(dest);
 	}, [params]);
 
-	return (
-		<div className="min-h-screen flex items-center justify-center bg-[#0B0F1A] text-gray-300">
-			Completing sign-in...
-		</div>
-	);
+	return null;
 }
 

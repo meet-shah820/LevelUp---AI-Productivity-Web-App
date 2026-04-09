@@ -27,7 +27,7 @@ export async function computeActivityStreakDays(userId) {
 		.sort({ occurredAt: -1 })
 		.select("occurredAt xpChange")
 		.limit(2500)
-		lean();
+		.lean();
 
 	if (!rows.length) return 0;
 

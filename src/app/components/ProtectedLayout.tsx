@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { getBillingStatus } from "../utils/api";
+import { getBillingOnboardedCache, getBillingStatus, syncBillingOnboardedCache } from "../utils/api";
 
 export function ProtectedLayout() {
 	const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -9,14 +9,16 @@ export function ProtectedLayout() {
 		return <Navigate to="/auth" state={{ from: location.pathname }} replace />;
 	}
 
-	const [checked, setChecked] = useState(false);
-	const [needsOnboarding, setNeedsOnboarding] = useState(false);
+	const cached = typeof window !== "undefined" ? getBillingOnboardedCache() : null;
+	const [checked, setChecked] = useState(cached !== null);
+	const [needsOnboarding, setNeedsOnboarding] = useState(cached === false);
 
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
 			try {
 				const s = await getBillingStatus();
+				syncBillingOnboardedCache(s.onboarded);
 				if (!cancelled) {
 					setNeedsOnboarding(!s.onboarded);
 					setChecked(true);
@@ -31,7 +33,9 @@ export function ProtectedLayout() {
 		};
 	}, []);
 
-	if (!checked) return null;
+	if (!checked) {
+		return <div className="min-h-screen bg-[#0B0F1A]" aria-hidden />;
+	}
 	if (needsOnboarding && location.pathname !== "/settings") {
 		return <Navigate to="/settings?onboarding=1#billing" replace />;
 	}

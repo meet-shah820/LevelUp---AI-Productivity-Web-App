@@ -16,6 +16,10 @@ function isPlaceholder(v) {
 	return s === "your_google_client_id" || s === "your_google_client_secret";
 }
 
+function envTrim(name) {
+	return String(process.env[name] || "").trim();
+}
+
 function getServerOrigin(req) {
 	const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http").toString().split(",")[0].trim();
 	const host = (req.headers["x-forwarded-host"] || req.get("host") || "localhost:5000").toString().split(",")[0].trim();
@@ -43,10 +47,10 @@ async function pickAvailableUsername(base) {
 }
 
 router.get("/oauth-health", (req, res) => {
-	const clientId = process.env.GOOGLE_CLIENT_ID;
-	const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-	const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getServerOrigin(req)}/api/auth/google/callback`;
-	const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT || "http://localhost:5173/auth/callback";
+	const clientId = envTrim("GOOGLE_CLIENT_ID");
+	const clientSecret = envTrim("GOOGLE_CLIENT_SECRET");
+	const callbackUrl = envTrim("GOOGLE_CALLBACK_URL") || `${getServerOrigin(req)}/api/auth/google/callback`;
+	const successRedirect = envTrim("OAUTH_SUCCESS_REDIRECT") || "http://localhost:5173/auth/callback";
 	return res.json({
 		ok: true,
 		google: {
@@ -96,8 +100,8 @@ router.post("/login", async (req, res) => {
 // Google OAuth (Authorization Code flow)
 router.get("/google", (req, res) => {
 	try {
-		const clientId = process.env.GOOGLE_CLIENT_ID;
-		const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getServerOrigin(req)}/api/auth/google/callback`;
+		const clientId = envTrim("GOOGLE_CLIENT_ID");
+		const callbackUrl = envTrim("GOOGLE_CALLBACK_URL") || `${getServerOrigin(req)}/api/auth/google/callback`;
 		if (!clientId || isPlaceholder(clientId)) return res.status(500).send("Google OAuth env not configured");
 
 		const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -125,10 +129,10 @@ router.get("/google/callback", async (req, res) => {
 		if (!code) return res.status(400).send("Missing code");
 		if (state && state !== "google_oauth") return res.status(400).send("Invalid state");
 
-		const clientId = process.env.GOOGLE_CLIENT_ID;
-		const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-		const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getServerOrigin(req)}/api/auth/google/callback`;
-		const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT || "http://localhost:5173/auth/callback";
+		const clientId = envTrim("GOOGLE_CLIENT_ID");
+		const clientSecret = envTrim("GOOGLE_CLIENT_SECRET");
+		const callbackUrl = envTrim("GOOGLE_CALLBACK_URL") || `${getServerOrigin(req)}/api/auth/google/callback`;
+		const successRedirect = envTrim("OAUTH_SUCCESS_REDIRECT") || "http://localhost:5173/auth/callback";
 		if (!clientId || !clientSecret || isPlaceholder(clientId) || isPlaceholder(clientSecret)) {
 			return res.status(500).send("Google OAuth env not configured");
 		}
@@ -149,7 +153,7 @@ router.get("/google/callback", async (req, res) => {
 		if (!tokenRes.ok) {
 			const text = await tokenRes.text();
 			// eslint-disable-next-line no-console
-			console.error("Google token exchange failed", tokenRes.status, text);
+			console.error("Google token exchange failed", tokenRes.status, text, { redirect_uri: callbackUrl });
 			return res.status(500).send("Google token exchange failed");
 		}
 
@@ -199,6 +203,7 @@ router.get("/google/callback", async (req, res) => {
 		const redirectUrl = new URL(successRedirect);
 		redirectUrl.searchParams.set("token", jwtToken);
 		redirectUrl.searchParams.set("username", user.username);
+		redirectUrl.searchParams.set("onboarded", user.billing?.onboarded ? "1" : "0");
 		return res.redirect(redirectUrl.toString());
 	} catch (e) {
 		// eslint-disable-next-line no-console

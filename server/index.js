@@ -34,6 +34,7 @@ if (fs.existsSync(envPath)) {
 }
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(cors());
 // Stripe only POSTs to webhooks; GET helps verify the URL in a browser and avoids "Cannot GET".
 app.get("/api/billing/webhook", (_req, res) => {
