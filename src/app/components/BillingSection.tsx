@@ -137,8 +137,12 @@ export function BillingSection({ onboarding = false, compactTitle = false }: { o
 			if (!url) throw new Error("Missing checkout url");
 			window.location.href = url;
 		} catch (e) {
-			setMsg(e instanceof Error ? e.message : "Failed to start checkout");
+			const text = e instanceof Error ? e.message : "Failed to start checkout";
+			setMsg(text);
 			setBusy(null);
+			setTimeout(() => {
+				document.getElementById("billing-checkout-error")?.scrollIntoView({ behavior: "smooth", block: "center" });
+			}, 0);
 		}
 	};
 
@@ -190,7 +194,15 @@ export function BillingSection({ onboarding = false, compactTitle = false }: { o
 				</Card>
 			) : null}
 
-			{msg ? <p className="text-sm text-amber-400">{msg}</p> : null}
+			{msg ? (
+				<div
+					id="billing-checkout-error"
+					role="alert"
+					className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 whitespace-pre-wrap break-words"
+				>
+					{msg}
+				</div>
+			) : null}
 
 			<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
 				{TIERS.map((t, idx) => {

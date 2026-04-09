@@ -39,6 +39,20 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 	return fetch(apiUrl(path), { ...init, headers });
 }
 
+async function readApiErrorMessage(res: Response, fallback: string): Promise<string> {
+	const text = await res.text();
+	if (!text.trim()) return `${fallback} (HTTP ${res.status})`;
+	try {
+		const j = JSON.parse(text) as { error?: string };
+		if (typeof j?.error === "string" && j.error.trim()) return j.error.trim();
+	} catch {
+		/* not JSON */
+	}
+	const t = text.trim().replace(/\s+/g, " ");
+	if (t.length > 0 && t.length < 1000) return t;
+	return `${fallback} (HTTP ${res.status})`;
+}
+
 export async function getDashboard() {
 	const res = await apiFetch("/api/dashboard");
 	if (!res.ok) throw new Error("Failed to load dashboard");
@@ -257,9 +271,10 @@ export async function startCheckout(tier: "starter" | "pro" | "elite"): Promise<
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ tier }),
 	});
-	const out = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((out as { error?: string }).error || "Failed to start checkout");
-	return out as { url: string };
+	if (!res.ok) {
+		throw new Error(await readApiErrorMessage(res, "Failed to start checkout"));
+	}
+	return res.json() as Promise<{ url: string }>;
 }
 
 export async function openBillingPortal(): Promise<{ url: string }> {

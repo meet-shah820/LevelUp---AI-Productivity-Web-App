@@ -28,7 +28,13 @@ const rootDir = path.resolve(process.cwd());
 const envPath = path.join(rootDir, ".env");
 const envExamplePath = path.join(rootDir, "env.example");
 if (fs.existsSync(envPath)) {
-	dotenv.config({ path: envPath });
+	dotenv.config({
+		path: envPath,
+		// Default dotenv does NOT override existing process.env. A stale STRIPE_* or PATH from
+		// Windows / the IDE can hide your real .env values and cause "No such price" forever.
+		// In production, NODE_ENV is usually "production" and hosts set env without a checked-in .env.
+		override: process.env.NODE_ENV !== "production",
+	});
 } else if (process.env.NODE_ENV !== "production" && fs.existsSync(envExamplePath)) {
 	dotenv.config({ path: envExamplePath });
 }

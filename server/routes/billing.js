@@ -39,6 +39,76 @@ function stripeClient() {
 	return new Stripe(key, { apiVersion: "2024-06-20" });
 }
 
+/** Stripe account id for this secret key (standard keys only). */
+async function fetchStripeAccountId() {
+	try {
+		const sk = String(process.env.STRIPE_SECRET_KEY || "");
+		if (!sk) return null;
+		const r = await fetch("https://api.stripe.com/v1/account", {
+			headers: { Authorization: `Bearer ${sk}` },
+		});
+		if (!r.ok) return null;
+		const j = await r.json();
+		return typeof j.id === "string" ? j.id : null;
+	} catch {
+		return null;
+	}
+}
+
+function priceEnvNameForTier(tier) {
+	switch (String(tier)) {
+		case "starter":
+			return "STRIPE_PRICE_STARTER";
+		case "pro":
+			return "STRIPE_PRICE_PRO";
+		case "elite":
+			return "STRIPE_PRICE_ELITE";
+		default:
+			return "STRIPE_PRICE_*";
+	}
+}
+
+function stripeKeyMode() {
+	const sk = String(process.env.STRIPE_SECRET_KEY || "");
+	if (sk.startsWith("sk_live")) return "live";
+	if (sk.startsWith("sk_test")) return "test";
+	return "unknown";
+}
+
+function isNoSuchPriceError(e) {
+	const code = e?.code ?? e?.raw?.code;
+	const msg = String(e?.message ?? e?.raw?.message ?? "");
+	const param = String(e?.param ?? e?.raw?.param ?? "");
+	if (/no such price/i.test(msg)) return true;
+	if (code === "resource_missing" && (param.includes("price") || param.includes("line_items"))) return true;
+	return false;
+}
+
+async function listRecurringPriceIdsSample(stripe, max = 14) {
+	try {
+		const list = await stripe.prices.list({ limit: 60, active: true });
+		return list.data.filter((p) => p.recurring).map((p) => p.id).slice(0, max);
+	} catch {
+		return [];
+	}
+}
+
+async function buildMissingPriceErrorMessage(stripe, mode, accountId, priceId, envName) {
+	const acctLine = accountId
+		? `This secret key belongs to Stripe account ${accountId}. In that account’s Dashboard, turn ${mode === "test" ? "Test mode ON" : "Test mode OFF (Live)"}, open the product, and copy the Price ID under Pricing into ${envName} in your project .env.`
+		: `Copy a Price ID from the same Stripe account and mode (${mode}) as STRIPE_SECRET_KEY.`;
+	const sample = await listRecurringPriceIdsSample(stripe, 14);
+	let listLine = "";
+	if (sample.length) {
+		listLine = ` This key currently sees these recurring price IDs—use the one that matches this tier (yours is not in this list): ${sample.join(", ")}.`;
+	} else {
+		listLine = " No active recurring prices exist for this account in this mode yet—create one under Product catalog.";
+	}
+	const reload =
+		" Restart the API after editing .env. If it still fails, check Windows “Environment Variables” for old STRIPE_* entries; in development this app now prefers your project .env over those.";
+	return `Stripe has no price ${priceId} (${envName}). ${acctLine}${listLine}${reload}`;
+}
+
 /** Trim and strip accidental quotes from .env (e.g. STRIPE_PRICE_X="price_..."). */
 function envStripePrice(name) {
 	let s = String(process.env[name] || "").trim();
@@ -164,21 +234,54 @@ router.post("/choose", requireAuth, async (req, res) => {
 
 // POST /api/billing/checkout { tier: "starter" | "pro" | "elite" }
 router.post("/checkout", requireAuth, async (req, res) => {
+	const tierStr = String((req.body || {}).tier || "");
+	const envName = priceEnvNameForTier(tierStr);
+
 	try {
-		const { tier } = req.body || {};
-		if (!["starter", "pro", "elite"].includes(String(tier))) {
+		if (!["starter", "pro", "elite"].includes(tierStr)) {
 			return res.status(400).json({ error: "Invalid tier" });
 		}
 
-		const priceId = tierToPriceId(String(tier));
+		const priceId = tierToPriceId(tierStr);
 		if (!priceId) return res.status(500).json({ error: "Stripe price not configured for this tier" });
 		if (!isStripePriceId(priceId)) {
 			return res.status(500).json({
-				error: `Invalid Stripe price id for ${tier}. Expected something like price_123... (not a dollar amount).`,
+				error: `Invalid Stripe price id for ${tierStr}. Expected something like price_123... (not a dollar amount).`,
 			});
 		}
 
 		const stripe = stripeClient();
+		const mode = stripeKeyMode();
+
+		let priceObj;
+		try {
+			priceObj = await stripe.prices.retrieve(priceId);
+		} catch (err) {
+			if (isNoSuchPriceError(err)) {
+				const acct = await fetchStripeAccountId();
+				const errorText = await buildMissingPriceErrorMessage(stripe, mode, acct, priceId, envName);
+				// eslint-disable-next-line no-console
+				console.warn("[billing/checkout] price not found:", priceId, envName);
+				return res.status(400).json({ error: errorText });
+			}
+			throw err;
+		}
+
+		if (!priceObj.active) {
+			// eslint-disable-next-line no-console
+			console.warn("[billing/checkout] price inactive:", priceId, envName);
+			return res.status(400).json({
+				error: `Stripe price ${priceId} (${envName}) is archived/inactive. Activate it in the Dashboard or point ${envName} at an active recurring price.`,
+			});
+		}
+		if (!priceObj.recurring) {
+			// eslint-disable-next-line no-console
+			console.warn("[billing/checkout] price not recurring:", priceId, envName);
+			return res.status(400).json({
+				error: `Stripe price ${priceId} (${envName}) is not recurring. Subscriptions need a recurring monthly (or interval) price.`,
+			});
+		}
+
 		const user = await User.findById(req.user._id);
 		if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -199,13 +302,13 @@ router.post("/checkout", requireAuth, async (req, res) => {
 				metadata: {
 					userId: String(user._id),
 					username: user.username,
-					requestedTier: String(tier),
+					requestedTier: tierStr,
 				},
 			},
 			metadata: {
 				userId: String(user._id),
 				username: user.username,
-				requestedTier: String(tier),
+				requestedTier: tierStr,
 			},
 		});
 
@@ -213,17 +316,71 @@ router.post("/checkout", requireAuth, async (req, res) => {
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error(e);
-		const code = e?.code ?? e?.raw?.code;
-		const param = e?.param ?? e?.raw?.param;
-		if (code === "resource_missing" && String(param || "").includes("price")) {
-			const sk = String(process.env.STRIPE_SECRET_KEY || "");
-			const mode = sk.startsWith("sk_live") ? "live" : sk.startsWith("sk_test") ? "test" : "unknown";
+		if (isNoSuchPriceError(e)) {
+			const acct = await fetchStripeAccountId();
+			const mode = stripeKeyMode();
+			const acctLine = acct ? `Account for this key: ${acct}. ` : "";
 			return res.status(400).json({
-				error:
-					`Stripe could not find this Price ID in ${mode} mode. Copy each price's API id from the same Stripe account, with the dashboard toggle set to ${mode === "live" ? "Live" : "Test"} (Test prices only work with sk_test_... keys).`,
+				error: `${acctLine}Stripe could not use this price in ${mode} mode. Confirm ${envName} in .env matches Product catalog → Price API ID for that same account.`,
 			});
 		}
 		return res.status(500).json({ error: "Failed to start checkout" });
+	}
+});
+
+// GET /api/billing/verify-prices — debug which env prices exist for STRIPE_SECRET_KEY
+router.get("/verify-prices", requireAuth, async (_req, res) => {
+	try {
+		const stripe = stripeClient();
+		const mode = stripeKeyMode();
+		const accountId = await fetchStripeAccountId();
+		const tiers = ["starter", "pro", "elite"];
+		const byTier = {};
+		for (const t of tiers) {
+			const id = tierToPriceId(t);
+			const envVar = priceEnvNameForTier(t);
+			if (!id) {
+				byTier[t] = { ok: false, envVar, detail: "missing in .env" };
+				continue;
+			}
+			if (!isStripePriceId(id)) {
+				byTier[t] = { ok: false, envVar, value: id, detail: "must be price_..." };
+				continue;
+			}
+			try {
+				const p = await stripe.prices.retrieve(id);
+				byTier[t] = {
+					ok: p.active,
+					envVar,
+					priceId: p.id,
+					active: p.active,
+					recurring: !!p.recurring,
+					currency: p.currency,
+					unitAmount: p.unit_amount,
+				};
+			} catch (err) {
+				byTier[t] = {
+					ok: false,
+					envVar,
+					priceId: id,
+					detail: err?.message || String(err),
+					code: err?.code,
+				};
+			}
+		}
+		const recurringPriceIdsSample = await listRecurringPriceIdsSample(stripe, 30);
+		return res.json({
+			stripeKeyMode: mode,
+			stripeAccountId: accountId,
+			recurringPriceIdsSample,
+			hint:
+				"If any tier fails, copy Price IDs from this same account in the Dashboard with Test mode matching sk_test/sk_live. recurringPriceIdsSample is what this API key can actually see.",
+			tiers: byTier,
+		});
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error(e);
+		return res.status(500).json({ error: String(e?.message || e) });
 	}
 });
 
