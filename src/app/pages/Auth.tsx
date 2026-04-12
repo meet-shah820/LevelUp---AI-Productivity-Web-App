@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
+import { consumeAuthReturnPath, rememberAuthReturnPathFromSearch } from "../utils/authRedirect";
+
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
 async function postJson(path: string, body: any) {
@@ -18,6 +21,12 @@ async function postJson(path: string, body: any) {
 }
 
 export default function Auth() {
+	const [searchParams] = useSearchParams();
+
+	useEffect(() => {
+		rememberAuthReturnPathFromSearch(searchParams);
+	}, [searchParams]);
+
 	const [mode, setMode] = useState<"login" | "signup">("login");
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
@@ -37,7 +46,8 @@ export default function Auth() {
 			const res = await postJson(`/api/auth/${mode}`, { username, password });
 			localStorage.setItem("auth_token", res.token);
 			localStorage.setItem("last_username", username);
-			window.location.href = "/";
+			const next = consumeAuthReturnPath() || "/";
+			window.location.href = next;
 		} catch {
 			setError("Authentication failed");
 		} finally {

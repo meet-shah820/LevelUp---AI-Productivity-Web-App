@@ -128,6 +128,18 @@ export const RANK_UPDATED_EVENT = "app:rank-updated";
 
 export const BILLING_UPDATED_EVENT = "app:billing-updated";
 
+export class BillingApiError extends Error {
+	status: number;
+	code?: string;
+
+	constructor(message: string, status: number, code?: string) {
+		super(message);
+		this.name = "BillingApiError";
+		this.status = status;
+		this.code = code;
+	}
+}
+
 export async function getProfile() {
 	const res = await apiFetch("/api/profile");
 	if (!res.ok) throw new Error("Failed to load profile");
@@ -290,15 +302,19 @@ export async function createBillingCheckoutSession(tier: Exclude<BillingTierId, 
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ tier }),
 	});
-	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to start checkout");
+	const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+	if (!res.ok) {
+		throw new BillingApiError(body.error || "Failed to start checkout", res.status, body.code);
+	}
 	return body as { url: string };
 }
 
 export async function createBillingPortalSession(): Promise<{ url: string }> {
 	const res = await apiFetch("/api/billing/portal-session", { method: "POST" });
-	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to open billing portal");
+	const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+	if (!res.ok) {
+		throw new BillingApiError(body.error || "Failed to open billing portal", res.status, body.code);
+	}
 	return body as { url: string };
 }
 

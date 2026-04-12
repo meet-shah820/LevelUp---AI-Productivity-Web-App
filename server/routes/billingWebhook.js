@@ -46,48 +46,6 @@ export async function billingWebhookHandler(req, res) {
 	}
 
 	try {
-		switch (event.type) {
-			case "checkout.session.completed":
-			case "checkout.session.async_payment_succeeded": {
-				const session = /** @type {import("stripe").Stripe.Checkout.Session} */ (event.data.object);
-				await handleSubscriptionCheckoutSession(stripe, session);
-				break;
-			}
-			case "customer.subscription.created":
-			case "customer.subscription.updated":
-			case "customer.subscription.deleted": {
-				const sub = /** @type {import("stripe").Stripe.Subscription} */ (event.data.object);
-				await syncUserFromSubscription(sub);
-				break;
-			}
-			case "invoice.paid": {
-				const invoice = /** @type {import("stripe").Stripe.Invoice} */ (event.data.object);
-				const subId =
-					typeof invoice.subscription === "string"
-						? invoice.subscription
-						: invoice.subscription?.id || null;
-				if (subId) {
-					const sub = await stripe.subscriptions.retrieve(subId);
-					await syncUserFromSubscription(sub);
-				}
-				break;
-			}
-			case "invoice.payment_failed": {
-				const invoice = /** @type {import("stripe").Stripe.Invoice} */ (event.data.object);
-				const subId =
-					typeof invoice.subscription === "string"
-						? invoice.subscription
-						: invoice.subscription?.id || null;
-				if (subId) {
-					const sub = await stripe.subscriptions.retrieve(subId);
-					await syncUserFromSubscription(sub);
-				}
-				break;
-			}
-			default:
-				break;
-		}
-
 		try {
 			await StripeWebhookEvent.create({
 				stripeEventId: event.id,
@@ -98,6 +56,53 @@ export async function billingWebhookHandler(req, res) {
 				return res.json({ received: true, duplicate: true });
 			}
 			throw createErr;
+		}
+
+		try {
+			switch (event.type) {
+				case "checkout.session.completed":
+				case "checkout.session.async_payment_succeeded": {
+					const session = /** @type {import("stripe").Stripe.Checkout.Session} */ (event.data.object);
+					await handleSubscriptionCheckoutSession(stripe, session);
+					break;
+				}
+				case "customer.subscription.created":
+				case "customer.subscription.updated":
+				case "customer.subscription.deleted": {
+					const sub = /** @type {import("stripe").Stripe.Subscription} */ (event.data.object);
+					await syncUserFromSubscription(sub);
+					break;
+				}
+				case "invoice.paid": {
+					const invoice = /** @type {import("stripe").Stripe.Invoice} */ (event.data.object);
+					const subId =
+						typeof invoice.subscription === "string"
+							? invoice.subscription
+							: invoice.subscription?.id || null;
+					if (subId) {
+						const sub = await stripe.subscriptions.retrieve(subId);
+						await syncUserFromSubscription(sub);
+					}
+					break;
+				}
+				case "invoice.payment_failed": {
+					const invoice = /** @type {import("stripe").Stripe.Invoice} */ (event.data.object);
+					const subId =
+						typeof invoice.subscription === "string"
+							? invoice.subscription
+							: invoice.subscription?.id || null;
+					if (subId) {
+						const sub = await stripe.subscriptions.retrieve(subId);
+						await syncUserFromSubscription(sub);
+					}
+					break;
+				}
+				default:
+					break;
+			}
+		} catch (processErr) {
+			await StripeWebhookEvent.deleteOne({ stripeEventId: event.id }).catch(() => {});
+			throw processErr;
 		}
 	} catch (e) {
 		// eslint-disable-next-line no-console

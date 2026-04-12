@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { Check, Sparkles } from "lucide-react";
 import { Card } from "../components/ui/card";
@@ -8,11 +8,14 @@ import {
 	getBillingPlans,
 	getBillingStatus,
 	createBillingCheckoutSession,
+	createBillingPortalSession,
+	BillingApiError,
 	BILLING_UPDATED_EVENT,
 	type BillingPlanTier,
 	type BillingTierId,
 } from "../utils/api";
 import { toast } from "sonner";
+import { setAuthReturnPath } from "../utils/authRedirect";
 
 function formatMoney(cents: number, currency = "usd") {
 	const code = currency.length === 3 ? currency.toUpperCase() : "USD";
@@ -22,11 +25,21 @@ function formatMoney(cents: number, currency = "usd") {
 	return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(cents / 100);
 }
 
+function readSignedIn(): boolean {
+	try {
+		return Boolean(typeof localStorage !== "undefined" && localStorage.getItem("auth_token"));
+	} catch {
+		return false;
+	}
+}
+
 export default function Pricing() {
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [tiers, setTiers] = useState<BillingPlanTier[]>([]);
 	const [checkoutAvailable, setCheckoutAvailable] = useState(false);
 	const [currentTier, setCurrentTier] = useState<BillingTierId>("free");
+	const [signedIn, setSignedIn] = useState(readSignedIn);
 	const [loadingTier, setLoadingTier] = useState<BillingTierId | null>(null);
 	const [loaded, setLoaded] = useState(false);
 
@@ -44,9 +57,12 @@ export default function Pricing() {
 			}
 			try {
 				const st = await getBillingStatus();
-				if (!cancelled) setCurrentTier(st.tier);
+				if (!cancelled) {
+					setCurrentTier(st.tier);
+					setSignedIn(true);
+				}
 			} catch {
-				/* guest or logged out — keep default */
+				if (!cancelled) setSignedIn(readSignedIn());
 			}
 			if (!cancelled) setLoaded(true);
 		})();
@@ -79,11 +95,34 @@ export default function Pricing() {
 
 	async function subscribe(tierId: BillingTierId) {
 		if (tierId === "free") return;
+		if (!readSignedIn()) {
+			setAuthReturnPath("/pricing");
+			navigate("/auth?next=/pricing");
+			return;
+		}
 		setLoadingTier(tierId);
 		try {
 			const { url } = await createBillingCheckoutSession(tierId);
 			window.location.href = url;
 		} catch (e) {
+			if (e instanceof BillingApiError && e.code === "USE_PORTAL") {
+				toast.message("You already have a subscription. Opening Stripe to change your plan.");
+				try {
+					const { url } = await createBillingPortalSession();
+					window.location.href = url;
+				} catch (pe) {
+					const pm = pe instanceof Error ? pe.message : "Could not open billing portal.";
+					toast.error(pm);
+					setLoadingTier(null);
+				}
+				return;
+			}
+			if (e instanceof BillingApiError && e.status === 401) {
+				setAuthReturnPath("/pricing");
+				navigate("/auth?next=/pricing");
+				setLoadingTier(null);
+				return;
+			}
 			const msg = e instanceof Error ? e.message : "Checkout failed.";
 			toast.error(msg);
 			setLoadingTier(null);
@@ -106,6 +145,9 @@ export default function Pricing() {
 					Free forever for core progression. Upgrade for analytics, deeper quests, and elite perks — billed monthly
 					through Stripe. Shown prices load from your Stripe Price objects (same as Checkout).
 				</p>
+				{loaded && !signedIn ? (
+					<p className="text-gray-500 text-sm">Sign in to subscribe. Browse plans below anytime.</p>
+				) : null}
 				{loaded && !checkoutAvailable ? (
 					<p className="text-amber-400/90 text-sm">
 						Checkout is not configured (set Stripe keys and monthly Price IDs in the server environment).
@@ -117,7 +159,7 @@ export default function Pricing() {
 				{tiers.map((tier, i) => {
 					const isCurrent = tier.id === currentTier;
 					const isPaid = tier.id !== "free";
-					const canSubscribe = isPaid && checkoutAvailable && tier.hasPriceId;
+					const stripeReady = isPaid && checkoutAvailable && tier.hasPriceId;
 					const showHighlight = Boolean(tier.highlight);
 
 					return (
@@ -176,10 +218,16 @@ export default function Pricing() {
 												? "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white"
 												: "bg-white/10 hover:bg-white/15 text-white border border-purple-500/30"
 										}`}
-										disabled={!canSubscribe || loadingTier !== null}
+										disabled={!stripeReady || loadingTier !== null}
 										onClick={() => void subscribe(tier.id)}
 									>
-										{loadingTier === tier.id ? "Redirecting…" : canSubscribe ? "Subscribe" : "Unavailable"}
+										{loadingTier === tier.id
+											? "Redirecting…"
+											: !stripeReady
+												? "Unavailable"
+												: !signedIn
+													? "Sign in to subscribe"
+													: "Subscribe"}
 									</Button>
 								) : (
 									<Button variant="outline" className="w-full border-purple-500/30 text-gray-300" disabled>

@@ -1,5 +1,6 @@
 import { useLayoutEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { consumeAuthReturnPath } from "../utils/authRedirect";
 
 export default function AuthCallback() {
 	const [params] = useSearchParams();
@@ -12,7 +13,8 @@ export default function AuthCallback() {
 		localStorage.setItem("auth_token", token);
 		const username = params.get("username");
 		if (username) localStorage.setItem("last_username", username);
-		window.location.replace("/");
+		const next = consumeAuthReturnPath() || "/";
+		window.location.replace(next);
 	}, [params]);
 
 	return null;
