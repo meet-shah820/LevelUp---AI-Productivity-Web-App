@@ -365,11 +365,19 @@ export default function Settings() {
               {(
                 [
                   { id: "profile" as const, label: "Profile", Icon: User },
-                  { id: "subscription" as const, label: "Subscription", Icon: CreditCard },
+                  {
+                    id: "subscription" as const,
+                    label: "Plan & billing",
+                    sub: "Change subscription",
+                    Icon: CreditCard,
+                  },
                   { id: "notifications" as const, label: "Notifications", Icon: Bell },
                   { id: "security" as const, label: "Security", Icon: Lock },
                 ] as const
-              ).map(({ id, label, Icon }) => (
+              ).map((item) => {
+                const { id, label, Icon } = item;
+                const sub = "sub" in item ? item.sub : undefined;
+                return (
                 <button
                   key={id}
                   type="button"
@@ -379,7 +387,7 @@ export default function Settings() {
                     next.set("tab", id);
                     setSearchParams(next, { replace: true });
                   }}
-                  className={`grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-3 rounded-lg text-left text-sm font-medium antialiased transition-colors ${
+                  className={`group grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-3 rounded-lg text-left text-sm font-medium antialiased transition-colors ${
                     active === id
                       ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
                       : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -389,9 +397,21 @@ export default function Settings() {
                   <span className="flex h-6 w-full max-w-6 items-center justify-center text-current" aria-hidden>
                     <Icon size={18} className="block h-[18px] w-[18px] shrink-0 overflow-visible" strokeWidth={2} />
                   </span>
-                  <span className="min-w-0 leading-snug">{label}</span>
+                  <span className="min-w-0 leading-snug">
+                    <span className="block">{label}</span>
+                    {sub ? (
+                      <span
+                        className={`block text-[11px] font-normal leading-tight mt-0.5 ${
+                          active === id ? "text-indigo-200/90" : "text-gray-500 group-hover:text-gray-400"
+                        }`}
+                      >
+                        {sub}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
-              ))}
+                );
+              })}
             </nav>
           </Card>
         </motion.div>
@@ -560,48 +580,15 @@ export default function Settings() {
               </p>
 
               <div className="space-y-8">
-                {/* Current plan */}
-                <section className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current plan</h3>
-                  <div className="p-4 rounded-xl bg-white/5 border border-purple-500/20 space-y-2">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div>
-                        <p className="text-2xl font-semibold text-white capitalize">{billingTier}</p>
-                        {billingStatus ? (
-                          <p className="text-sm text-gray-400 mt-1">Subscription status: {billingStatus}</p>
-                        ) : (
-                          <p className="text-sm text-gray-500 mt-1">No active Stripe subscription on file.</p>
-                        )}
-                      </div>
-                      {billingCancelAtPeriodEnd && hasActivePaidSub ? (
-                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40">
-                          Cancels at period end
-                        </span>
-                      ) : null}
-                    </div>
-                    {billingPeriodEnd ? (
-                      <p className="text-xs text-gray-500">
-                        Current billing period ends{" "}
-                        <span className="text-gray-300">
-                          {new Date(billingPeriodEnd).toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                      </p>
-                    ) : null}
-                    <p className="text-xs text-gray-600 pt-1 border-t border-purple-500/10">
-                      Billing profile: {billingHasCustomer ? "Linked to Stripe" : "Not linked yet — subscribe once from Pricing."}
-                    </p>
+                {/* Change plan, Stripe portal, cancel / resume — first so it stays above the fold */}
+                <section id="change-subscription" className="space-y-3 scroll-mt-24" aria-labelledby="change-subscription-heading">
+                  <div>
+                    <h3 id="change-subscription-heading" className="text-base font-semibold text-white">
+                      Change subscription
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">Switch plans, open Stripe, or cancel your plan</p>
                   </div>
-                </section>
-
-                {/* Change plan, Stripe portal, cancel / resume */}
-                <section className="space-y-4" aria-labelledby="change-subscription-heading">
-                  <h3 id="change-subscription-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Change subscription
-                  </h3>
-                  <div className="p-4 rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 space-y-4">
+                  <div className="p-4 rounded-xl border border-violet-500/30 ring-1 ring-violet-500/10 bg-gradient-to-br from-violet-500/10 to-indigo-500/5 space-y-4">
                     <p className="text-sm text-gray-400">
                       Compare plans and subscribe from Pricing, open Stripe&apos;s customer portal to adjust your plan or
                       payment method (when enabled there), or cancel below.
@@ -763,9 +750,47 @@ export default function Settings() {
                   </div>
                 </section>
 
+                {/* Current plan */}
+                <section className="space-y-2" aria-labelledby="current-plan-heading">
+                  <h3 id="current-plan-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Current plan
+                  </h3>
+                  <div className="p-4 rounded-xl bg-white/5 border border-purple-500/20 space-y-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div>
+                        <p className="text-2xl font-semibold text-white capitalize">{billingTier}</p>
+                        {billingStatus ? (
+                          <p className="text-sm text-gray-400 mt-1">Subscription status: {billingStatus}</p>
+                        ) : (
+                          <p className="text-sm text-gray-500 mt-1">No active Stripe subscription on file.</p>
+                        )}
+                      </div>
+                      {billingCancelAtPeriodEnd && hasActivePaidSub ? (
+                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40">
+                          Cancels at period end
+                        </span>
+                      ) : null}
+                    </div>
+                    {billingPeriodEnd ? (
+                      <p className="text-xs text-gray-500">
+                        Current billing period ends{" "}
+                        <span className="text-gray-300">
+                          {new Date(billingPeriodEnd).toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      </p>
+                    ) : null}
+                    <p className="text-xs text-gray-600 pt-1 border-t border-purple-500/10">
+                      Billing profile: {billingHasCustomer ? "Linked to Stripe" : "Not linked yet — subscribe once from Pricing."}
+                    </p>
+                  </div>
+                </section>
+
                 {/* Payment history */}
                 <section className="space-y-4" aria-labelledby="manage-billing-heading">
-                  <h3 id="manage-billing-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <h3 id="manage-billing-heading" className="text-sm font-semibold text-white">
                     Manage billing
                   </h3>
                   <div className="p-4 rounded-xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 space-y-6">
