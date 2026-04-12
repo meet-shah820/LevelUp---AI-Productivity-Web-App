@@ -12,20 +12,10 @@
  * existing Price IDs from your env. New catalog rows appear when you run this script or add
  * products manually in the Dashboard. Use ONE set of three prices in env to avoid duplicates.
  */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import fs from "node:fs";
-import dotenv from "dotenv";
 import Stripe from "stripe";
+import { loadProjectEnv } from "../config/loadEnv.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "../..");
-const envPath = path.join(root, ".env");
-if (fs.existsSync(envPath)) {
-	dotenv.config({ path: envPath });
-} else {
-	dotenv.config();
-}
+loadProjectEnv({ mode: "script" });
 
 const key = process.env.STRIPE_SECRET_KEY?.trim();
 if (!key) {

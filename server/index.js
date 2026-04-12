@@ -2,9 +2,7 @@ import express from "express";
 import http from "node:http";
 import mongoose from "mongoose";
 import cors from "cors";
-import dotenv from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
+import { loadProjectEnv } from "./config/loadEnv.js";
 import goalsRouter from "./routes/goals.js";
 import dashboardRouter from "./routes/dashboard.js";
 import questsRouter from "./routes/quests.js";
@@ -26,18 +24,7 @@ import "./jobs/penalties.js";
 import { attachUser } from "./middleware/auth.js";
 import { attachLeaderboardWebSocket } from "./services/leaderboardHub.js";
 
-// Prefer .env for real secrets. If missing, fall back to env.example to reduce "env not configured" confusion.
-const rootDir = path.resolve(process.cwd());
-const envPath = path.join(rootDir, ".env");
-const envExamplePath = path.join(rootDir, "env.example");
-if (fs.existsSync(envPath)) {
-	dotenv.config({
-		path: envPath,
-		override: process.env.NODE_ENV !== "production",
-	});
-} else if (process.env.NODE_ENV !== "production" && fs.existsSync(envExamplePath)) {
-	dotenv.config({ path: envExamplePath });
-}
+loadProjectEnv({ mode: "server" });
 
 const app = express();
 app.set("trust proxy", 1);

@@ -145,6 +145,18 @@ export default function Settings() {
     }
   }, []);
 
+  const openBillingPortal = useCallback(async () => {
+    setPortalBusy(true);
+    try {
+      const { url } = await createBillingPortalSession();
+      window.location.href = url;
+    } catch (e) {
+      setPortalBusy(false);
+      const msg = e instanceof Error ? e.message : "Could not open portal.";
+      toast.error(msg, { duration: 12000 });
+    }
+  }, []);
+
   useEffect(() => {
     if (active === "subscription") void loadPaymentHistory();
   }, [active, loadPaymentHistory]);
@@ -584,15 +596,15 @@ export default function Settings() {
                   </div>
                 </section>
 
-                {/* Manage Billing: actions + payment history + portal */}
-                <section className="space-y-4" aria-labelledby="manage-billing-heading">
-                  <h3 id="manage-billing-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Manage Billing
+                {/* Change plan, Stripe portal, cancel / resume */}
+                <section className="space-y-4" aria-labelledby="change-subscription-heading">
+                  <h3 id="change-subscription-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Change subscription
                   </h3>
-                  <div className="p-4 rounded-xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 space-y-6">
+                  <div className="p-4 rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 space-y-4">
                     <p className="text-sm text-gray-400">
-                      View plans, open Stripe&apos;s customer portal for payment methods and invoices, and review your
-                      payment history below.
+                      Compare plans and subscribe from Pricing, open Stripe&apos;s customer portal to adjust your plan or
+                      payment method (when enabled there), or cancel below.
                     </p>
                     <div className="flex flex-wrap gap-3">
                       <Button
@@ -608,17 +620,7 @@ export default function Settings() {
                           variant="outline"
                           className="border-purple-500/40 text-white hover:bg-white/10 bg-white/5"
                           disabled={portalBusy}
-                          onClick={async () => {
-                            setPortalBusy(true);
-                            try {
-                              const { url } = await createBillingPortalSession();
-                              window.location.href = url;
-                            } catch (e) {
-                              setPortalBusy(false);
-                              const msg = e instanceof Error ? e.message : "Could not open portal.";
-                              toast.error(msg, { duration: 12000 });
-                            }
-                          }}
+                          onClick={() => void openBillingPortal()}
                         >
                           {portalBusy ? "Opening…" : "Open billing portal"}
                         </Button>
@@ -758,8 +760,21 @@ export default function Settings() {
                         </Button>
                       </div>
                     ) : null}
+                  </div>
+                </section>
 
-                    <div className="space-y-3 pt-2 border-t border-purple-500/15">
+                {/* Payment history */}
+                <section className="space-y-4" aria-labelledby="manage-billing-heading">
+                  <h3 id="manage-billing-heading" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Manage billing
+                  </h3>
+                  <div className="p-4 rounded-xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 space-y-6">
+                    <p className="text-sm text-gray-400">
+                      Receipts and paid invoices are listed below. Open the billing portal for card updates and full Stripe
+                      billing details (same as in Change subscription).
+                    </p>
+
+                    <div className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payment history</h4>
@@ -767,16 +782,30 @@ export default function Settings() {
                             Successful charges and paid invoices for this account (from Stripe).
                           </p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-indigo-300 hover:text-white h-8 shrink-0"
-                          disabled={paymentLoading}
-                          onClick={() => void loadPaymentHistory()}
-                        >
-                          {paymentLoading ? "Refreshing…" : "Refresh"}
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          {canOpenBillingPortal ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-xs border-purple-500/40 text-white hover:bg-white/10 h-8"
+                              disabled={portalBusy}
+                              onClick={() => void openBillingPortal()}
+                            >
+                              {portalBusy ? "Opening…" : "Billing portal"}
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-indigo-300 hover:text-white h-8 shrink-0"
+                            disabled={paymentLoading}
+                            onClick={() => void loadPaymentHistory()}
+                          >
+                            {paymentLoading ? "Refreshing…" : "Refresh"}
+                          </Button>
+                        </div>
                       </div>
                       {paymentError ? (
                         <p className="text-sm text-amber-400">{paymentError}</p>

@@ -5,23 +5,43 @@
 
 export const PAID_TIER_IDS = ["starter", "pro", "elite"];
 
+/**
+ * Strip BOM, whitespace, and wrapping quotes from env-based Price IDs (common Dashboard / Render paste issues).
+ * @param {string | undefined} raw
+ */
+export function normalizeStripePriceId(raw) {
+	if (raw == null) return "";
+	let s = String(raw).replace(/^\uFEFF/, "").trim();
+	if (!s) return "";
+	// Repeatedly unwrap quotes (e.g. "\"price_xxx\"" from a bad paste)
+	for (let i = 0; i < 3; i++) {
+		const next = s.replace(/^['"]+|['"]+$/g, "").trim();
+		if (next === s) break;
+		s = next;
+	}
+	// Trailing junk from copy-paste
+	s = s.replace(/[\s,;\u200b]+$/g, "");
+	return s;
+}
+
 /** @param {string} tier */
 export function getStripePriceIdForTier(tier) {
-	if (tier === "starter") return process.env.STRIPE_PRICE_STARTER?.trim() || "";
-	if (tier === "pro") return process.env.STRIPE_PRICE_PRO?.trim() || "";
-	if (tier === "elite") return process.env.STRIPE_PRICE_ELITE?.trim() || "";
+	if (tier === "starter") return normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER);
+	if (tier === "pro") return normalizeStripePriceId(process.env.STRIPE_PRICE_PRO);
+	if (tier === "elite") return normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE);
 	return "";
 }
 
 /** @param {string | undefined} priceId */
 export function getTierFromStripePriceId(priceId) {
 	if (!priceId || typeof priceId !== "string") return null;
-	const s = process.env.STRIPE_PRICE_STARTER?.trim();
-	const p = process.env.STRIPE_PRICE_PRO?.trim();
-	const e = process.env.STRIPE_PRICE_ELITE?.trim();
-	if (s && priceId === s) return "starter";
-	if (p && priceId === p) return "pro";
-	if (e && priceId === e) return "elite";
+	const id = normalizeStripePriceId(priceId);
+	const s = normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER);
+	const p = normalizeStripePriceId(process.env.STRIPE_PRICE_PRO);
+	const e = normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE);
+	if (s && id === s) return "starter";
+	if (p && id === p) return "pro";
+	if (e && id === e) return "elite";
 	return null;
 }
 

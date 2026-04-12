@@ -22,6 +22,35 @@ function readableStripeError(err) {
 	return null;
 }
 
+/** @param {unknown} err */
+function isNoSuchStripePrice(err) {
+	if (!err || typeof err !== "object") return false;
+	const o = /** @type {{ code?: string; param?: string; message?: unknown; raw?: { code?: string; param?: string; message?: string } }} */ (err);
+	const code = o.code || o.raw?.code;
+	const param = o.param || o.raw?.param;
+	const message = o.message || o.raw?.message;
+	if (code === "resource_missing") {
+		const p = String(param || "");
+		if (p.includes("price") || p === "price") return true;
+	}
+	const m = String(message || "").toLowerCase();
+	return m.includes("no such price");
+}
+
+function stripePriceEnvMismatchHint() {
+	return " Use Price IDs from the same Stripe account and mode (test vs live) as STRIPE_SECRET_KEY. From the repo root run: npm run stripe:verify";
+}
+
+/** @param {unknown} err */
+function billingStripeUserMessage(err) {
+	const base = readableStripeError(err);
+	if (isNoSuchStripePrice(err)) {
+		const head = base || "Stripe could not find that price.";
+		return `${head}${stripePriceEnvMismatchHint()}`;
+	}
+	return base;
+}
+
 /** Stale cus_... after test reset, new API key, or different Stripe account */
 /** @param {unknown} err */
 function isStripeMissingCustomerError(err) {
@@ -321,7 +350,7 @@ router.post("/checkout-session", requireAuth, async (req, res) => {
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error("checkout-session", e);
-		const fromStripe = readableStripeError(e);
+		const fromStripe = billingStripeUserMessage(e);
 		return res.status(500).json({
 			error: fromStripe || "Failed to start checkout",
 		});
