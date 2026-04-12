@@ -86,14 +86,23 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
                 {difficultyLabel}
               </Badge>
             )}
-            {d?.source === "gemini" && (
+            {data?.isPenaltyActive && (
+              <Badge className="bg-rose-500/25 text-rose-200 border-rose-500/40">Penalty</Badge>
+            )}
+            {d?.source === "gemini" && !data?.isPenaltyActive && (
               <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-500/40 gap-1">
                 <Sparkles className="w-3 h-3" />
                 System AI
               </Badge>
             )}
           </div>
-          <DialogDescription className="text-gray-400 text-left">
+          <DialogDescription className="text-gray-400 text-left space-y-1">
+            {data?.isPenaltyActive && data?.originalTitle ? (
+              <span className="block text-rose-300/90 text-sm">
+                Penalty protocol is active. Main quest (locked until complete):{" "}
+                <span className="text-gray-200">{data.originalTitle}</span>
+              </span>
+            ) : null}
             {g ? (
               <span className="flex items-center gap-2 mt-1">
                 <Target className="w-4 h-4 shrink-0 text-purple-400" />
@@ -141,14 +150,22 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
                   </h4>
                   <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{d.summary}</p>
                 </section>
-                {(d.whatYouImprove || d.howTo) && (
+                {d.howTo && String(d.howTo).trim().length > 20 && (
+                  <section>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-400 mb-2">
+                      Execution instructions
+                    </h4>
+                    <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{d.howTo}</p>
+                  </section>
+                )}
+                {d.whatYouImprove && (
                   <section>
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-400 mb-2 flex items-center gap-2">
                       <TrendingUp className="w-4 h-4 shrink-0" />
                       XP allocation
                     </h4>
                     <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                      {d.whatYouImprove || d.howTo}
+                      {d.whatYouImprove}
                     </p>
                   </section>
                 )}

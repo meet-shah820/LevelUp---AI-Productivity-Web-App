@@ -27,6 +27,9 @@ export type Quest = {
   goalId: string | null;
   timeframe: "daily" | "weekly" | "monthly";
   expiresAt?: string;
+  /** Server: incomplete quests surface a discipline protocol instead of the main quest text. */
+  isPenaltyActive?: boolean;
+  originalTitle?: string;
   category: string;
 };
 

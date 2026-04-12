@@ -53,16 +53,25 @@ function normalizeRarity(raw: unknown): GoalRarity {
 }
 
 function mapServerGoals(raw: any[]): Goal[] {
-  return (raw || []).map((g: any) => ({
-    id: normalizeGoalId(g._id ?? g.id),
-    title: g.title,
-    category: (g.category || "Personal") as Goal["category"],
-    rarity: normalizeRarity(g.rarity),
-    description: "",
-    progress: 0,
-    createdAt: g.createdAt,
-    color: categoryColors[(g.category || "Personal") as Goal["category"]],
-  }));
+  return (raw || []).map((g: any) => {
+    const deadlineRaw = g.deadline;
+    let deadline: string | undefined;
+    if (deadlineRaw) {
+      const d = new Date(deadlineRaw);
+      deadline = Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
+    }
+    return {
+      id: normalizeGoalId(g._id ?? g.id),
+      title: g.title,
+      category: (g.category || "Personal") as Goal["category"],
+      rarity: normalizeRarity(g.rarity),
+      description: typeof g.description === "string" ? g.description : "",
+      deadline,
+      progress: 0,
+      createdAt: g.createdAt,
+      color: categoryColors[(g.category || "Personal") as Goal["category"]],
+    };
+  });
 }
 
 const MONGO_OBJECT_ID_RE = /^[a-f\d]{24}$/i;
@@ -141,7 +150,7 @@ export default function Goals() {
   };
 
   const handleSaveGoal = async () => {
-    if (!formData.title || !formData.description) return;
+    if (!formData.title) return;
 
     if (editingGoal) {
       // Update existing goal
@@ -157,7 +166,13 @@ export default function Goals() {
     } else {
       // Create new goal
       try {
-        await createGoal({ title: formData.title, category: formData.category, rarity: formData.rarity });
+        await createGoal({
+          title: formData.title,
+          category: formData.category,
+          rarity: formData.rarity,
+          description: formData.description.trim() || undefined,
+          deadline: formData.deadline.trim() || undefined,
+        });
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
@@ -517,18 +532,18 @@ export default function Goals() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">Notes (optional)</Label>
               <Textarea
                 id="description"
-                placeholder="Describe your goal in detail..."
+                placeholder="Extra context for the System (constraints, niche, starting point)…"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="bg-[#0B0F1A] border-purple-500/30 text-white min-h-[100px]"
+                className="bg-[#0B0F1A] border-purple-500/30 text-white min-h-[80px]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="deadline">Deadline (Optional)</Label>
+              <Label htmlFor="deadline">Deadline (optional)</Label>
               <Input
                 id="deadline"
                 type="date"
@@ -549,7 +564,7 @@ export default function Goals() {
             </Button>
             <Button
               onClick={handleSaveGoal}
-              disabled={!formData.title || !formData.description}
+              disabled={!formData.title}
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >
               {editingGoal ? "Update Goal" : "Create Goal"}

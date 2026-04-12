@@ -3,8 +3,6 @@ import { motion } from "motion/react";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { getBillingStatus, syncBillingOnboardedCache } from "../utils/api";
-
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
 async function postJson(path: string, body: any) {
@@ -39,13 +37,7 @@ export default function Auth() {
 			const res = await postJson(`/api/auth/${mode}`, { username, password });
 			localStorage.setItem("auth_token", res.token);
 			localStorage.setItem("last_username", username);
-			try {
-				const s = await getBillingStatus();
-				syncBillingOnboardedCache(s.onboarded);
-				window.location.href = s.onboarded ? "/" : "/settings?onboarding=1#billing";
-			} catch {
-				window.location.href = "/";
-			}
+			window.location.href = "/";
 		} catch {
 			setError("Authentication failed");
 		} finally {

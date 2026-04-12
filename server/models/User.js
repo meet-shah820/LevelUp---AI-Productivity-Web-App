@@ -38,16 +38,13 @@ const UserSchema = new mongoose.Schema(
 		stats: { type: StatsSchema, default: () => ({}) },
 		streak: { type: Number, default: 0 },
 		billing: {
-			/** free | starter | pro | elite */
+			/** free | starter | pro | elite — synced from Stripe webhooks when subscribed */
 			tier: { type: String, enum: ["free", "starter", "pro", "elite"], default: "free" },
-			/** True once the user has picked a plan at least once (including Free). */
-			onboarded: { type: Boolean, default: false },
 			stripeCustomerId: { type: String, default: "" },
 			stripeSubscriptionId: { type: String, default: "" },
-			stripePriceId: { type: String, default: "" },
-			stripeStatus: { type: String, default: "" },
-			/** Unix ms timestamp of current period end (if known) */
-			currentPeriodEndMs: { type: Number, default: 0 },
+			/** Stripe subscription.status */
+			subscriptionStatus: { type: String, default: "" },
+			currentPeriodEnd: { type: Date, default: null },
 		},
 	},
 	{ timestamps: true }

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { User, Bell, Lock, LogOut, CreditCard } from "lucide-react";
 import { Card } from "../components/ui/card";
@@ -9,7 +10,6 @@ import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
-import { BillingSection } from "../components/BillingSection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,16 +23,19 @@ import {
 } from "../components/ui/alert-dialog";
 import {
   changePassword,
-  clearBillingOnboardedCache,
   getSettings,
   resetAll,
   saveSettings,
   getProfile,
   patchProfile,
   PROFILE_UPDATED_EVENT,
+  getBillingStatus,
+  createBillingPortalSession,
 } from "../utils/api";
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profileSnapshot = useRef<{
     displayName: string;
@@ -52,7 +55,12 @@ export default function Settings() {
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
-  const [active, setActive] = useState<"profile" | "notifications" | "security" | "billing">("profile");
+  const [active, setActive] = useState<"profile" | "notifications" | "security" | "subscription">("profile");
+  const [billingTier, setBillingTier] = useState<string>("free");
+  const [billingStatus, setBillingStatus] = useState<string>("");
+  const [billingPeriodEnd, setBillingPeriodEnd] = useState<string | null>(null);
+  const [billingHasCustomer, setBillingHasCustomer] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
   const [notif, setNotif] = useState({
     questReminders: true,
     levelUp: true,
@@ -71,6 +79,32 @@ export default function Settings() {
   const [usernameAuto, setUsernameAuto] = useState(false);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "subscription" || tab === "profile" || tab === "notifications" || tab === "security") {
+      setActive(tab);
+    }
+  }, [searchParams]);
+
+  const loadBilling = useCallback(async () => {
+    try {
+      const b = await getBillingStatus();
+      setBillingTier(b.tier);
+      setBillingStatus(b.subscriptionStatus || "");
+      setBillingPeriodEnd(b.currentPeriodEnd);
+      setBillingHasCustomer(b.hasStripeCustomer);
+    } catch {
+      setBillingTier("free");
+      setBillingStatus("");
+      setBillingPeriodEnd(null);
+      setBillingHasCustomer(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBilling();
+  }, [loadBilling]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await getSettings();
@@ -78,17 +112,6 @@ export default function Settings() {
       } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const qs = new URLSearchParams(window.location.search);
-    if (qs.get("onboarding") === "1") {
-      setActive("billing");
-      // Scroll to billing section when present
-      setTimeout(() => {
-        document.getElementById("billing")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 50);
-    }
   }, []);
 
   const loadProfileFields = useCallback(async () => {
@@ -282,50 +305,36 @@ export default function Settings() {
         >
           <Card className="bg-[#111827] border-purple-500/20 p-4">
             <nav className="space-y-1">
-              <button
-                onClick={() => setActive("profile")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  active === "profile"
-                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <User className="w-5 h-5" />
-                <span className="text-sm font-medium">Profile</span>
-              </button>
-              <button
-                onClick={() => setActive("notifications")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  active === "notifications"
-                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Bell className="w-5 h-5" />
-                <span className="text-sm font-medium">Notifications</span>
-              </button>
-              <button
-                onClick={() => setActive("security")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  active === "security"
-                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Lock className="w-5 h-5" />
-                <span className="text-sm font-medium">Security</span>
-              </button>
-              <button
-                onClick={() => setActive("billing")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  active === "billing"
-                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <CreditCard className="w-5 h-5" />
-                <span className="text-sm font-medium">Billing</span>
-              </button>
+              {(
+                [
+                  { id: "profile" as const, label: "Profile", Icon: User },
+                  { id: "subscription" as const, label: "Subscription", Icon: CreditCard },
+                  { id: "notifications" as const, label: "Notifications", Icon: Bell },
+                  { id: "security" as const, label: "Security", Icon: Lock },
+                ] as const
+              ).map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setActive(id);
+                    const next = new URLSearchParams(searchParams);
+                    next.set("tab", id);
+                    setSearchParams(next, { replace: true });
+                  }}
+                  className={`grid w-full grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-3 rounded-lg text-left text-sm font-medium antialiased transition-colors ${
+                    active === id
+                      ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-white"
+                      : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {/* Fixed 24px column: flex min-width:auto can crush some SVGs (e.g. Bell) to ~3px */}
+                  <span className="flex h-6 w-full max-w-6 items-center justify-center text-current" aria-hidden>
+                    <Icon size={18} className="block h-[18px] w-[18px] shrink-0 overflow-visible" strokeWidth={2} />
+                  </span>
+                  <span className="min-w-0 leading-snug">{label}</span>
+                </button>
+              ))}
             </nav>
           </Card>
         </motion.div>
@@ -481,6 +490,67 @@ export default function Settings() {
           </motion.div>
           )}
 
+          {active === "subscription" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <Card className="bg-[#111827] border-purple-500/20 p-6">
+              <h2 className="text-xl font-bold text-white mb-2">Subscription</h2>
+              <p className="text-sm text-gray-400 mb-6">
+                Your plan controls feature access (for example Analytics on Pro and above). Billing is processed securely by Stripe.
+              </p>
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-lg bg-white/5 border border-purple-500/20">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Current tier</p>
+                    <p className="text-lg font-semibold text-white capitalize">{billingTier}</p>
+                    {billingStatus ? (
+                      <p className="text-xs text-gray-400 mt-1">Status: {billingStatus}</p>
+                    ) : null}
+                    {billingPeriodEnd ? (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Current period ends {new Date(billingPeriodEnd).toLocaleDateString()}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white"
+                    onClick={() => navigate("/pricing")}
+                  >
+                    View plans
+                  </Button>
+                  {billingHasCustomer ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-purple-500/30 text-white hover:bg-white/5"
+                      disabled={portalBusy}
+                      onClick={async () => {
+                        setPortalBusy(true);
+                        try {
+                          const { url } = await createBillingPortalSession();
+                          window.location.href = url;
+                        } catch (e) {
+                          setPortalBusy(false);
+                          const msg = e instanceof Error ? e.message : "Could not open portal.";
+                          window.alert(msg);
+                        }
+                      }}
+                    >
+                      {portalBusy ? "Opening…" : "Manage billing"}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+          )}
+
           {/* Notification Settings */}
           {active === "notifications" && (
           <motion.div
@@ -609,19 +679,6 @@ export default function Settings() {
           </motion.div>
           )}
 
-          {/* Billing */}
-          {active === "billing" && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
-          >
-            <Card className="bg-[#111827] border-purple-500/20 p-6">
-              <BillingSection />
-            </Card>
-          </motion.div>
-          )}
-
           {/* Danger Zone */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -727,7 +784,6 @@ export default function Settings() {
               className="w-full border-purple-500/30 text-white hover:bg-white/5"
               onClick={() => {
                 localStorage.removeItem("auth_token");
-                clearBillingOnboardedCache();
                 window.location.href = "/auth";
               }}
             >

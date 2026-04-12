@@ -3,7 +3,13 @@ import mongoose from "mongoose";
 import Goal from "../models/Goal.js";
 import Quest from "../models/Quest.js";
 import { getUserForReq } from "../utils/demoUser.js";
-import { generateDailyQuests, pickQuestsBalancedByDifficulty } from "../services/gemini.js";
+import {
+	generateFullGoalQuestPlan,
+	buildBriefingPayloadFromRichQuest,
+	estimateGoalHorizonMonths,
+} from "../services/gemini.js";
+import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
+import { buildStoredPenaltyForQuest } from "../utils/questPenalty.js";
 import { calculateLevelFromXp } from "../utils/level.js";
 import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
@@ -23,6 +29,44 @@ function normalizeGoalRarity(g) {
 	if (g.rarity && Object.prototype.hasOwnProperty.call(RARITY_ORDER, g.rarity)) return g.rarity;
 	if (g.difficulty && LEGACY_DIFF_TO_RARITY[g.difficulty]) return LEGACY_DIFF_TO_RARITY[g.difficulty];
 	return "common";
+}
+
+function parseOptionalDate(raw) {
+	if (raw == null || raw === "") return null;
+	const d = new Date(raw);
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Cap total inserted rows so one goal cannot explode the DB. */
+function computeSeedWindows(months, dailyTemplateCount, weeklyTemplateCount, monthlyTemplateCount) {
+	const m = Math.max(1, Math.min(36, months));
+	let daysToSeed = Math.min(45, Math.max(7, Math.round(m * 1.2)));
+	let weeksToSeed = Math.min(16, Math.max(4, Math.ceil(m / 1.5)));
+	let monthsToSeed =
+		monthlyTemplateCount > 0 ? Math.min(8, Math.max(2, Math.ceil(m / 4))) : 0;
+	const dc = Math.max(1, dailyTemplateCount);
+	const wc = Math.max(1, weeklyTemplateCount);
+	const mc = Math.max(1, monthlyTemplateCount);
+	while (daysToSeed > 7 && daysToSeed * dc > 120) daysToSeed -= 1;
+	while (weeksToSeed > 4 && weeksToSeed * wc > 56) weeksToSeed -= 1;
+	while (monthsToSeed > 2 && monthsToSeed * mc > 24) monthsToSeed -= 1;
+	return { daysToSeed, weeksToSeed, monthsToSeed };
+}
+
+function penaltyDoc(tf, q) {
+	const p = buildStoredPenaltyForQuest({
+		type: tf,
+		difficulty: q.difficulty || "medium",
+		statType: q.statType,
+	});
+	return {
+		title: p.title,
+		summary: p.summary,
+		howTo: p.howTo,
+		doneWhen: p.doneWhen,
+		steps: p.steps,
+		whatYouImprove: p.whatYouImprove,
+	};
 }
 
 // GET /api/goals — sorted by rarity: common → mythic (easiest → hardest)
@@ -54,7 +98,13 @@ router.get("/", async (req, res) => {
 // POST /api/goals
 router.post("/", async (req, res) => {
 	try {
-		const { title, category, rarity: rawRarity } = req.body || {};
+		const {
+			title,
+			category,
+			rarity: rawRarity,
+			deadline: rawDeadline,
+			description: rawDescription,
+		} = req.body || {};
 		if (!title) {
 			return res.status(400).json({ error: "title is required" });
 		}
@@ -66,87 +116,126 @@ router.post("/", async (req, res) => {
 
 		const user = await getUserForReq(req);
 		const goalCategory = category || "general";
+		const deadline = parseOptionalDate(rawDeadline);
+		const description = String(rawDescription || "").trim().slice(0, 2000);
+
 		const goal = await Goal.create({
 			userId: user._id,
 			title,
 			category: goalCategory,
 			rarity,
+			description,
+			deadline,
 		});
 
-		// Gemini: daily quests for the next 7 days (5 per day), weekly milestones for the next 4 weeks
 		const userLevel = calculateLevelFromXp(user.xp);
+		const plan = await generateFullGoalQuestPlan({
+			goalTitle: title,
+			category: goalCategory,
+			currentLevel: userLevel,
+			deadlineDate: deadline,
+			description,
+		});
+
+		const months = estimateGoalHorizonMonths(deadline, "");
+		const { daysToSeed, weeksToSeed, monthsToSeed } = computeSeedWindows(
+			months,
+			plan.dailyQuests.length,
+			plan.weeklyQuests.length,
+			plan.monthlyQuests.length
+		);
+
 		const questsToInsert = [];
-		for (let i = 0; i < 7; i++) {
-			const aiQuests = await generateDailyQuests({
-				goalTitle: title,
-				currentLevel: userLevel,
-				category: goalCategory,
-				timeframe: "daily",
-			});
-			const date = new Date();
+		const now = new Date();
+
+		for (let i = 0; i < daysToSeed; i++) {
+			const date = new Date(now);
 			date.setDate(date.getDate() + i);
-			for (const q of aiQuests) {
+			date.setHours(12, 0, 0, 0);
+			for (const q of plan.dailyQuests) {
+				const briefing = buildBriefingPayloadFromRichQuest(q);
 				questsToInsert.push({
 					userId: user._id,
 					goalId: goal._id,
 					title: q.title,
-					xpReward: q.xp,
+					xpReward: Math.round(q.xp),
 					statType: q.statType,
 					difficulty: q.difficulty || "medium",
 					isCompleted: false,
 					type: "daily",
 					date,
+					expiresAt: null,
+					isExpired: false,
+					penalty: penaltyDoc("daily", q),
+					briefing: {
+						...briefing,
+						requirements: "",
+					},
+					briefingGeneratedAt: new Date(),
+					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
 				});
 			}
 		}
-		for (let w = 0; w < 4; w++) {
-			const weekDate = new Date();
+
+		for (let w = 0; w < weeksToSeed; w++) {
+			const weekDate = new Date(now);
 			weekDate.setDate(weekDate.getDate() + w * 7);
-			const aiQuestsWeekly = await generateDailyQuests({
-				goalTitle: title,
-				currentLevel: userLevel,
-				category: goalCategory,
-				timeframe: "weekly",
-			});
-			for (const q of pickQuestsBalancedByDifficulty(aiQuestsWeekly, 3)) {
+			weekDate.setHours(12, 0, 0, 0);
+			for (const q of plan.weeklyQuests) {
+				const briefing = buildBriefingPayloadFromRichQuest(q);
 				questsToInsert.push({
 					userId: user._id,
 					goalId: goal._id,
 					title: q.title,
-					xpReward: Math.round(q.xp || 200),
+					xpReward: Math.round(q.xp),
 					statType: q.statType,
 					difficulty: q.difficulty || "medium",
 					isCompleted: false,
 					type: "weekly",
 					date: weekDate,
+					expiresAt: null,
+					isExpired: false,
+					penalty: penaltyDoc("weekly", q),
+					briefing: {
+						...briefing,
+						requirements: "",
+					},
+					briefingGeneratedAt: new Date(),
+					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
 				});
 			}
 		}
-		for (let m = 0; m < 3; m++) {
-			const monthDate = new Date();
+
+		for (let m = 0; m < monthsToSeed; m++) {
+			const monthDate = new Date(now);
 			monthDate.setMonth(monthDate.getMonth() + m);
 			monthDate.setDate(1);
 			monthDate.setHours(12, 0, 0, 0);
-			const aiQuestsMonthly = await generateDailyQuests({
-				goalTitle: title,
-				currentLevel: userLevel,
-				category: goalCategory,
-				timeframe: "monthly",
-			});
-			for (const q of pickQuestsBalancedByDifficulty(aiQuestsMonthly, 2)) {
+			for (const q of plan.monthlyQuests) {
+				const briefing = buildBriefingPayloadFromRichQuest(q);
 				questsToInsert.push({
 					userId: user._id,
 					goalId: goal._id,
 					title: q.title,
-					xpReward: Math.round(q.xp || 400),
+					xpReward: Math.round(q.xp),
 					statType: q.statType,
 					difficulty: q.difficulty || "medium",
 					isCompleted: false,
 					type: "monthly",
 					date: monthDate,
+					expiresAt: null,
+					isExpired: false,
+					penalty: penaltyDoc("monthly", q),
+					briefing: {
+						...briefing,
+						requirements: "",
+					},
+					briefingGeneratedAt: new Date(),
+					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
 				});
 			}
 		}
+
 		if (questsToInsert.length) {
 			await Quest.insertMany(questsToInsert);
 		}

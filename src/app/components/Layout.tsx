@@ -16,12 +16,19 @@ import {
   Palette,
   Calendar,
   ListOrdered,
+  CreditCard,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { motion, AnimatePresence } from "motion/react";
-import { getDashboard, getRecentHistory, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
+import {
+  getDashboard,
+  getRecentHistory,
+  PROFILE_UPDATED_EVENT,
+  RANK_UPDATED_EVENT,
+  BILLING_UPDATED_EVENT,
+} from "../utils/api";
 import { getBillingStatus, type BillingStatus } from "../utils/api";
 
 type Tier = "free" | "starter" | "pro" | "elite";
@@ -112,12 +119,17 @@ export function Layout() {
     const onRankUpdated = () => {
       void loadHeaderData();
     };
+    const onBillingUpdated = () => {
+      void loadHeaderData();
+    };
     window.addEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
     window.addEventListener(RANK_UPDATED_EVENT, onRankUpdated);
+    window.addEventListener(BILLING_UPDATED_EVENT, onBillingUpdated);
     return () => {
       cancelled = true;
       window.removeEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
       window.removeEventListener(RANK_UPDATED_EVENT, onRankUpdated);
+      window.removeEventListener(BILLING_UPDATED_EVENT, onBillingUpdated);
     };
   }, []);
 
@@ -137,6 +149,7 @@ export function Layout() {
       { name: "Leaderboard", href: "/leaderboard", icon: ListOrdered },
       { name: "Profile", href: "/profile", icon: User },
       { name: "Achievements", href: "/achievements", icon: Trophy },
+      { name: "Pricing", href: "/pricing", icon: CreditCard },
       { name: "Settings", href: "/settings", icon: Settings },
     ];
   }, [tier]);

@@ -1,25 +1,5 @@
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
-const BILLING_ONBOARDED_KEY = "app_billing_onboarded";
-
-/** Persist billing onboarding flag so the shell can render without a blank gate after login. */
-export function syncBillingOnboardedCache(onboarded: boolean) {
-	if (typeof window === "undefined") return;
-	localStorage.setItem(BILLING_ONBOARDED_KEY, onboarded ? "1" : "0");
-}
-
-export function clearBillingOnboardedCache() {
-	if (typeof window === "undefined") return;
-	localStorage.removeItem(BILLING_ONBOARDED_KEY);
-}
-
-export function getBillingOnboardedCache(): boolean | null {
-	if (typeof window === "undefined") return null;
-	const v = localStorage.getItem(BILLING_ONBOARDED_KEY);
-	if (v === "1") return true;
-	if (v === "0") return false;
-	return null;
-}
 function apiUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }
@@ -59,7 +39,14 @@ export async function getDashboard() {
 	return res.json();
 }
 
-export async function createGoal(payload: { title: string; category?: string; rarity?: string }) {
+export async function createGoal(payload: {
+	title: string;
+	category?: string;
+	rarity?: string;
+	/** ISO date string (YYYY-MM-DD) from date input */
+	deadline?: string;
+	description?: string;
+}) {
 	const res = await apiFetch("/api/goals", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -138,6 +125,8 @@ export const PROFILE_UPDATED_EVENT = "app:profile-updated";
 
 /** Fired after server-side rank may have changed (quests, focus, goals, achievements). */
 export const RANK_UPDATED_EVENT = "app:rank-updated";
+
+export const BILLING_UPDATED_EVENT = "app:billing-updated";
 
 export async function getProfile() {
 	const res = await apiFetch("/api/profile");
@@ -221,6 +210,8 @@ export type QuestDetailsPayload = {
 		/** easy | medium | hard */
 		difficulty?: string;
 	};
+	isPenaltyActive?: boolean;
+	originalTitle?: string;
 	goal: { id: string; title: string; category: string } | null;
 	details: {
 		summary: string;
@@ -250,13 +241,14 @@ export async function getRecentHistory() {
 	return res.json();
 }
 
+export type BillingTierId = "free" | "starter" | "pro" | "elite";
+
 export type BillingStatus = {
-	tier: "free" | "starter" | "pro" | "elite";
-	onboarded: boolean;
-	stripeStatus: string;
-	currentPeriodEndMs: number;
-	/** Amounts shown on plan cards; from server .env (STRIPE_PRICE_* or *_LABEL). */
-	priceDisplay?: { starter: string; pro: string; elite: string };
+	tier: BillingTierId;
+	subscriptionStatus: string;
+	currentPeriodEnd: string | null;
+	hasStripeCustomer: boolean;
+	checkoutAvailable: boolean;
 };
 
 export async function getBillingStatus(): Promise<BillingStatus> {
@@ -265,41 +257,44 @@ export async function getBillingStatus(): Promise<BillingStatus> {
 	return res.json();
 }
 
-export async function startCheckout(tier: "starter" | "pro" | "elite"): Promise<{ url: string }> {
-	const res = await apiFetch("/api/billing/checkout", {
+export type BillingPlanTier = {
+	id: BillingTierId;
+	name: string;
+	tagline: string;
+	monthlyPriceCents: number;
+	features: string[];
+	highlight?: boolean;
+	stripeConfigured: boolean;
+	hasPriceId: boolean;
+};
+
+export type BillingPlansResponse = {
+	tiers: BillingPlanTier[];
+	checkoutAvailable: boolean;
+};
+
+export async function getBillingPlans(): Promise<BillingPlansResponse> {
+	const res = await apiFetch("/api/billing/plans");
+	if (!res.ok) throw new Error("Failed to load plans");
+	return res.json();
+}
+
+export async function createBillingCheckoutSession(tier: Exclude<BillingTierId, "free">): Promise<{ url: string }> {
+	const res = await apiFetch("/api/billing/checkout-session", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ tier }),
 	});
-	if (!res.ok) {
-		throw new Error(await readApiErrorMessage(res, "Failed to start checkout"));
-	}
-	return res.json() as Promise<{ url: string }>;
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to start checkout");
+	return body as { url: string };
 }
 
-export async function openBillingPortal(): Promise<{ url: string }> {
-	const res = await apiFetch("/api/billing/portal", { method: "POST" });
-	const out = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((out as { error?: string }).error || "Failed to open portal");
-	return out as { url: string };
-}
-
-export async function refreshBilling(): Promise<BillingStatus & { ok: true }> {
-	const res = await apiFetch("/api/billing/refresh", { method: "POST" });
-	const out = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((out as { error?: string }).error || "Failed to refresh billing");
-	return out as BillingStatus & { ok: true };
-}
-
-export async function chooseFreePlan(): Promise<{ ok: true; tier: "free"; onboarded: true }> {
-	const res = await apiFetch("/api/billing/choose", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ tier: "free" }),
-	});
-	const out = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error((out as { error?: string }).error || "Failed to choose plan");
-	return out as { ok: true; tier: "free"; onboarded: true };
+export async function createBillingPortalSession(): Promise<{ url: string }> {
+	const res = await apiFetch("/api/billing/portal-session", { method: "POST" });
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to open billing portal");
+	return body as { url: string };
 }
 
 export type StreakCalendarDay = {

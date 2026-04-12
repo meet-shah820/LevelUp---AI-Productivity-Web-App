@@ -112,13 +112,15 @@ export default function Quests() {
       id: q.id,
       goalId: q.goalId || "",
       title: q.title,
-      description: "",
+      description: typeof q.executionPreview === "string" ? q.executionPreview.trim() : "",
       xp: q.xp,
       completed: q.isCompleted,
       timeframe,
       difficulty: mapDifficultyFromApi(q.difficulty),
       category: "",
-      expiresAt: q.expiresAt,
+      expiresAt: q.expiresAt ? String(q.expiresAt) : undefined,
+      isPenaltyActive: !!q.isPenaltyActive,
+      originalTitle: typeof q.originalTitle === "string" ? q.originalTitle : "",
     });
     async function loadGoalsAndQuests() {
       try {
@@ -296,98 +298,6 @@ export default function Quests() {
     }
   };
 
-  function formatRemaining(expiresAt?: string) {
-    if (!expiresAt) return "";
-    const now = Date.now();
-    const expiry = new Date(expiresAt).getTime();
-    const diffMs = Math.max(0, expiry - now);
-    const totalSeconds = Math.floor(diffMs / 1000);
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const pad = (n: number) => String(n).padStart(2, "0");
-    if (days > 0) return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)} remaining`;
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)} remaining`;
-  }
-
-  function TimeRemaining({ expiresAt }: { expiresAt: string }) {
-    const [, setNow] = useState(Date.now());
-    useEffect(() => {
-      const id = window.setInterval(() => setNow(Date.now()), 1000);
-      return () => window.clearInterval(id);
-    }, []);
-    return (
-      <span className="text-xs text-gray-400 flex items-center gap-1">
-        <Clock className="w-3.5 h-3.5 text-gray-400" />
-        {formatRemaining(expiresAt)}
-      </span>
-    );
-  }
-
-  // Schedule a silent refresh when the nearest quest expiry is reached
-  useEffect(() => {
-    if (!quests || quests.length === 0) return;
-    const active = quests.filter((q) => !q.completed && q.expiresAt);
-    if (active.length === 0) return;
-    const soonest = active
-      .map((q) => new Date(q.expiresAt as string).getTime())
-      .filter((t) => !Number.isNaN(t))
-      .sort((a, b) => a - b)[0];
-    if (!soonest) return;
-    const now = Date.now();
-    const delay = Math.max(0, soonest - now + 1000); // +1s buffer
-    const to = window.setTimeout(async () => {
-      try {
-        const daily = await getQuests("daily");
-        const weekly = await getQuests("weekly");
-        const monthly = await getQuests("monthly");
-        const mapped: Quest[] = [
-          ...(daily.quests || []).map((q: any) => ({
-            id: q.id,
-            goalId: q.goalId || "",
-            title: q.title,
-            description: "",
-            xp: q.xp,
-            completed: q.isCompleted,
-            timeframe: "daily" as const,
-            difficulty: mapDifficultyFromApi(q.difficulty),
-            category: "",
-            expiresAt: q.expiresAt,
-          })),
-          ...(weekly.quests || []).map((q: any) => ({
-            id: q.id,
-            goalId: q.goalId || "",
-            title: q.title,
-            description: "",
-            xp: q.xp,
-            completed: q.isCompleted,
-            timeframe: "weekly" as const,
-            difficulty: mapDifficultyFromApi(q.difficulty),
-            category: "",
-            expiresAt: q.expiresAt,
-          })),
-          ...(monthly.quests || []).map((q: any) => ({
-            id: q.id,
-            goalId: q.goalId || "",
-            title: q.title,
-            description: "",
-            xp: q.xp,
-            completed: q.isCompleted,
-            timeframe: "monthly" as const,
-            difficulty: mapDifficultyFromApi(q.difficulty),
-            category: "",
-            expiresAt: q.expiresAt,
-          })),
-        ];
-        setQuests(mapped);
-      } catch {
-        // ignore transient fetch errors
-      }
-    }, delay);
-    return () => window.clearTimeout(to);
-  }, [quests]);
-
   const QuestCard = ({
     quest,
     onOpenDetail,
@@ -451,7 +361,11 @@ export default function Quests() {
                       <span className="capitalize">{quest.timeframe}</span>
                     </div>
                   </Badge>
-                  {quest.expiresAt && !quest.completed && <TimeRemaining expiresAt={quest.expiresAt} />}
+                  {quest.isPenaltyActive && !quest.completed && (
+                    <Badge className="bg-rose-500/20 text-rose-200 border-rose-500/40 text-xs">
+                      Penalty protocol
+                    </Badge>
+                  )}
                 </div>
                 <h3
                   className={`text-lg font-bold ${
@@ -460,8 +374,12 @@ export default function Quests() {
                 >
                   {displayTitle}
                 </h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  {MONGO_OBJECT_ID_RE.test(quest.id) ? "Click the card for full briefing from the System" : quest.description || "—"}
+                <p className="text-sm text-gray-400 mt-1 leading-snug whitespace-pre-wrap line-clamp-6">
+                  {quest.description
+                    ? quest.description
+                    : MONGO_OBJECT_ID_RE.test(quest.id)
+                      ? "Click the card for full execution briefing from the System."
+                      : "—"}
                 </p>
               </div>
 

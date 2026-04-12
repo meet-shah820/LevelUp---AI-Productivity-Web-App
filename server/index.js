@@ -18,13 +18,13 @@ import historyRouter from "./routes/history.js";
 import profileRouter from "./routes/profile.js";
 import settingsRouter from "./routes/settings.js";
 import streakRouter from "./routes/streak.js";
-import billingRouter, { syncUserFromSubscription } from "./routes/billing.js";
+import billingRouter from "./routes/billing.js";
+import { billingWebhookHandler } from "./routes/billingWebhook.js";
 import leaderboardRouter from "./routes/leaderboard.js";
 import "./jobs/cron.js";
 import "./jobs/penalties.js";
 import { attachUser } from "./middleware/auth.js";
 import { attachLeaderboardWebSocket } from "./services/leaderboardHub.js";
-import Stripe from "stripe";
 
 // Prefer .env for real secrets. If missing, fall back to env.example to reduce "env not configured" confusion.
 const rootDir = path.resolve(process.cwd());
@@ -33,9 +33,6 @@ const envExamplePath = path.join(rootDir, "env.example");
 if (fs.existsSync(envPath)) {
 	dotenv.config({
 		path: envPath,
-		// Default dotenv does NOT override existing process.env. A stale STRIPE_* or PATH from
-		// Windows / the IDE can hide your real .env values and cause "No such price" forever.
-		// In production, NODE_ENV is usually "production" and hosts set env without a checked-in .env.
 		override: process.env.NODE_ENV !== "production",
 	});
 } else if (process.env.NODE_ENV !== "production" && fs.existsSync(envExamplePath)) {
@@ -45,48 +42,9 @@ if (fs.existsSync(envPath)) {
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
-// Stripe only POSTs to webhooks; GET helps verify the URL in a browser and avoids "Cannot GET".
-app.get("/api/billing/webhook", (_req, res) => {
-	res.status(200).json({
-		ok: true,
-		message: "Stripe webhook URL — use POST with application/json. Browser checks are GET only.",
-	});
-});
-// Stripe webhooks require raw body. We mount the webhook route BEFORE JSON parsing.
-app.post("/api/billing/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-	try {
-		const secret = process.env.STRIPE_WEBHOOK_SECRET;
-		const key = process.env.STRIPE_SECRET_KEY;
-		if (!secret || !key) return res.status(500).send("Stripe webhook env not configured");
 
-		const stripe = new Stripe(key, { apiVersion: "2024-06-20" });
-		const sig = req.headers["stripe-signature"];
-		if (!sig || typeof sig !== "string") return res.status(400).send("Missing stripe-signature");
-
-		const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-
-		if (event.type === "checkout.session.completed") {
-			// Subscription is created async; we’ll rely on subscription.updated too, but try to sync early when possible.
-			const session = event.data.object;
-			const subId = session?.subscription;
-			if (typeof subId === "string") {
-				const sub = await stripe.subscriptions.retrieve(subId, { expand: ["customer", "items.data.price"] });
-				await syncUserFromSubscription(sub);
-			}
-		}
-
-		if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-			const sub = event.data.object;
-			await syncUserFromSubscription(sub);
-		}
-
-		return res.json({ received: true });
-	} catch (e) {
-		// eslint-disable-next-line no-console
-		console.error("Stripe webhook error", e);
-		return res.status(400).send("Webhook Error");
-	}
-});
+// Stripe webhooks require the raw body for signature verification
+app.post("/api/billing/webhook", express.raw({ type: "application/json" }), billingWebhookHandler);
 
 app.use(express.json({ limit: "4mb" }));
 app.use(attachUser);

@@ -5,6 +5,7 @@ import History from "../models/History.js";
 import { calculateLevelFromXp } from "../utils/level.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
+import { mapQuestToClientResponse } from "../utils/questClientView.js";
 
 const router = express.Router();
 
@@ -92,14 +93,7 @@ router.get("/", async (req, res) => {
 				rank: user.rank || "E",
 				nextLevelXp: Math.pow(user.level, 2) * 100, // inverse of given formula
 			},
-			quests: todaysQuests.map((q) => ({
-				id: q._id,
-				title: q.title,
-				xp: q.xpReward,
-				isCompleted: q.isCompleted,
-				statType: q.statType,
-				difficulty: q.difficulty === "easy" || q.difficulty === "hard" ? q.difficulty : "medium",
-			})),
+			quests: todaysQuests.map((q) => mapQuestToClientResponse(q)),
 			progress: {
 				completed,
 				total,

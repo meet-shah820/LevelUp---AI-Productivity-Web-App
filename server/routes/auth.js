@@ -203,7 +203,6 @@ router.get("/google/callback", async (req, res) => {
 		const redirectUrl = new URL(successRedirect);
 		redirectUrl.searchParams.set("token", jwtToken);
 		redirectUrl.searchParams.set("username", user.username);
-		redirectUrl.searchParams.set("onboarded", user.billing?.onboarded ? "1" : "0");
 		return res.redirect(redirectUrl.toString());
 	} catch (e) {
 		// eslint-disable-next-line no-console

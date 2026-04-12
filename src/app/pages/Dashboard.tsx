@@ -446,10 +446,22 @@ export default function Dashboard() {
                             {quest.isCompleted && <Check className="w-4 h-4 text-white" />}
                           </div>
                           <div className="flex-1">
-                            <p className={`font-medium ${quest.isCompleted ? "text-gray-400 line-through" : "text-white"}`}>
-                              {quest.title}
-                            </p>
-                            <p className="text-xs text-gray-500 uppercase">{quest.statType}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-medium ${quest.isCompleted ? "text-gray-400 line-through" : "text-white"}`}>
+                                {quest.title}
+                              </p>
+                              {quest.isPenaltyActive && !quest.isCompleted && (
+                                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-rose-500/40 text-rose-300 bg-rose-500/10">
+                                  Penalty
+                                </span>
+                              )}
+                            </div>
+                            {quest.executionPreview ? (
+                              <p className="text-xs text-gray-400 mt-1 leading-snug line-clamp-3 whitespace-pre-wrap">
+                                {quest.executionPreview}
+                              </p>
+                            ) : null}
+                            <p className="text-xs text-gray-500 uppercase mt-1">{quest.statType}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">

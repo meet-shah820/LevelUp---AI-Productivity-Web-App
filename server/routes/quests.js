@@ -10,7 +10,9 @@ import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
 import { scheduleLeaderboardBroadcast } from "../services/leaderboardHub.js";
 import { generateQuestDetails } from "../services/gemini.js";
-import { computeQuestExpiry } from "../utils/timeframePeriod.js";
+import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
+import { resolvePenaltyForQuest } from "../utils/questPenalty.js";
+import { mapQuestDifficulty, mapQuestToClientResponse } from "../utils/questClientView.js";
 import {
 	startOfDay,
 	endOfDay,
@@ -26,9 +28,6 @@ import {
 } from "../utils/timeframePeriod.js";
 
 const router = express.Router();
-
-/** Increment when quest briefing prompts change so clients get fresh Gemini content. */
-const BRIEFING_SCHEMA_VERSION = 6;
 
 /** XP granted once when every quest in that timeframe window for the user is completed. */
 const TIMEFRAME_SET_BONUS_XP = { daily: 150, weekly: 400, monthly: 900 };
@@ -104,11 +103,6 @@ async function maybeAwardTimeframeSetBonus(user, completedQuest) {
 	return { awarded: bonusXp, leveledUp: postBonusLevel > preBonusLevel };
 }
 
-function mapQuestDifficulty(d) {
-	if (d === "easy" || d === "medium" || d === "hard") return d;
-	return "medium";
-}
-
 // GET /api/quests?timeframe=daily|weekly|monthly&difficulty=easy|medium|hard
 router.get("/", async (req, res) => {
 	try {
@@ -126,12 +120,12 @@ router.get("/", async (req, res) => {
 			start.setHours(0, 0, 0, 0);
 			const end = new Date();
 			end.setHours(23, 59, 59, 999);
-			filter = { ...filter, date: { $gte: start, $lte: end }, isExpired: { $ne: true } };
+			filter = { ...filter, date: { $gte: start, $lte: end } };
 		}
 		// For weekly/monthly, switch to rolling windows per quest: fetch all by type and filter in JS
 		let quests;
 		if (timeframe === "weekly") {
-			const allWeekly = await Quest.find({ ...filter, type: "weekly", isExpired: { $ne: true } }).sort({ createdAt: -1 }).lean();
+			const allWeekly = await Quest.find({ ...filter, type: "weekly" }).sort({ createdAt: -1 }).lean();
 			const now = new Date();
 			quests = allWeekly.filter((q) => {
 				const start = rollingWeeklyStart(q.date || now);
@@ -139,7 +133,7 @@ router.get("/", async (req, res) => {
 				return now >= start && now <= end;
 			});
 		} else if (timeframe === "monthly") {
-			const allMonthly = await Quest.find({ ...filter, type: "monthly", isExpired: { $ne: true } }).sort({ createdAt: -1 }).lean();
+			const allMonthly = await Quest.find({ ...filter, type: "monthly" }).sort({ createdAt: -1 }).lean();
 			const now = new Date();
 			quests = allMonthly.filter((q) => {
 				const start = rollingMonthlyStart(q.date || now);
@@ -147,20 +141,10 @@ router.get("/", async (req, res) => {
 				return now >= start && now <= end;
 			});
 		} else {
-			quests = await Quest.find({ ...filter, isExpired: { $ne: true } }).sort({ createdAt: -1 }).lean();
+			quests = await Quest.find({ ...filter }).sort({ createdAt: -1 }).lean();
 		}
 		return res.json({
-			quests: quests.map((q) => ({
-				id: q._id,
-				goalId: q.goalId,
-				title: q.title,
-				xp: q.xpReward,
-				isCompleted: q.isCompleted,
-				statType: q.statType,
-				type: q.type,
-				difficulty: mapQuestDifficulty(q.difficulty),
-				expiresAt: (q.expiresAt || computeQuestExpiry(q.type, q.date)).toISOString(),
-			})),
+			quests: quests.map((q) => mapQuestToClientResponse(q)),
 		});
 	} catch (e) {
 		// eslint-disable-next-line no-console
@@ -196,6 +180,36 @@ router.get("/:id/details", async (req, res) => {
 		const userLevel = calculateLevelFromXp(user.xp);
 		const diff = mapQuestDifficulty(quest.difficulty);
 
+		if (!quest.isCompleted) {
+			const pen = resolvePenaltyForQuest(quest);
+			return res.json({
+				quest: {
+					id: quest._id,
+					title: pen.title,
+					xpReward: quest.xpReward,
+					statType: quest.statType,
+					type: quest.type,
+					isCompleted: false,
+					goalId: quest.goalId,
+					difficulty: diff,
+				},
+				goal: goal
+					? { id: goal._id, title: goal.title, category: goal.category }
+					: null,
+				details: {
+					summary: pen.summary,
+					whatYouImprove: pen.whatYouImprove,
+					doneWhen: pen.doneWhen,
+					steps: pen.steps,
+					tips: "",
+					source: "fallback",
+					howTo: pen.howTo || "",
+				},
+				isPenaltyActive: true,
+				originalTitle: quest.title,
+			});
+		}
+
 		let details;
 		if (hasStoredBriefing(quest)) {
 			details = {
@@ -205,6 +219,7 @@ router.get("/:id/details", async (req, res) => {
 				steps: quest.briefing.steps,
 				tips: quest.briefing.tips || "",
 				source: quest.briefing.source || "fallback",
+				howTo: quest.briefing.howTo || "",
 			};
 		} else {
 			details = await generateQuestDetails({
@@ -224,7 +239,7 @@ router.get("/:id/details", async (req, res) => {
 				whatYouImprove: details.whatYouImprove || "",
 				doneWhen: details.doneWhen || "",
 				requirements: "",
-				howTo: "",
+				howTo: details.howTo || "",
 				steps: details.steps || [],
 				tips: details.tips || "",
 				source: details.source === "gemini" ? "gemini" : "fallback",
@@ -248,7 +263,12 @@ router.get("/:id/details", async (req, res) => {
 			goal: goal
 				? { id: goal._id, title: goal.title, category: goal.category }
 				: null,
-			details,
+			details: {
+				...details,
+				howTo: details.howTo || "",
+			},
+			isPenaltyActive: false,
+			originalTitle: quest.title,
 		});
 	} catch (e) {
 		// eslint-disable-next-line no-console
@@ -267,10 +287,6 @@ router.patch("/:id/complete", async (req, res) => {
 		}
 		if (quest.isCompleted) {
 			return res.json({ updated: false, leveledUp: false });
-		}
-		// Prevent completing expired quests
-		if (quest.isExpired || (quest.expiresAt && new Date(quest.expiresAt) < new Date())) {
-			return res.status(400).json({ error: "Quest has expired" });
 		}
 
 		quest.isCompleted = true;

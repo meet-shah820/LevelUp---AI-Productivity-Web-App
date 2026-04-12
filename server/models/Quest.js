@@ -12,11 +12,19 @@ const QuestSchema = new mongoose.Schema(
 		/** Effort / time to complete — independent of timeframe (Gemini-assigned). */
 		difficulty: { type: String, enum: ["easy", "medium", "hard"], default: "medium" },
 		date: { type: Date, default: () => new Date() },
-		/** When this quest automatically expires (end of its rolling window). */
+		/** Legacy — no longer used for gating (quests do not expire). */
 		expiresAt: { type: Date, default: null, index: true },
-		/** Server-side expiration flag; expired quests are no longer eligible for completion. */
 		isExpired: { type: Boolean, default: false, index: true },
 		expiredAt: { type: Date, default: null },
+		/** Shown in place of the main quest while isCompleted is false. */
+		penalty: {
+			title: { type: String, default: "" },
+			summary: { type: String, default: "" },
+			howTo: { type: String, default: "" },
+			doneWhen: { type: String, default: "" },
+			steps: { type: [String], default: [] },
+			whatYouImprove: { type: String, default: "" },
+		},
 		/** Cached System briefing (Gemini or fallback); generated on first details view. */
 		briefing: {
 			summary: { type: String, default: "" },
