@@ -112,51 +112,6 @@ router.post("/login", async (req, res) => {
 	}
 });
 
-/** New anonymous account (no password). Each call creates a distinct user. */
-router.post("/guest-signup", async (req, res) => {
-	try {
-		const username = await pickAvailableUsername("guest");
-		const user = await User.create({ username, password: null, isGuest: true });
-		const token = makeJwt(user);
-		return res.json({ token, username: user.username });
-	} catch (e) {
-		// eslint-disable-next-line no-console
-		console.error(e);
-		return res.status(500).json({ error: "failed to create guest account" });
-	}
-});
-
-/**
- * Continue a saved guest session (same browser). Requires a valid JWT for a user with isGuest.
- */
-router.post("/guest-login", async (req, res) => {
-	try {
-		const raw = req.headers?.authorization || req.headers?.Authorization;
-		const header = Array.isArray(raw) ? raw[0] : raw;
-		if (!header || typeof header !== "string") {
-			return res.status(401).json({ error: "no saved guest session" });
-		}
-		const m = header.match(/^Bearer\s+(.+)$/i);
-		if (!m) return res.status(401).json({ error: "no saved guest session" });
-		let payload;
-		try {
-			payload = jwt.verify(m[1], JWT_SECRET);
-		} catch {
-			return res.status(401).json({ error: "session expired — use Guest sign up" });
-		}
-		const uid = payload?.uid;
-		if (!uid) return res.status(401).json({ error: "invalid session" });
-		const user = await User.findById(uid).exec();
-		if (!user?.isGuest) return res.status(401).json({ error: "not a guest account — sign in with username or Google" });
-		const token = makeJwt(user);
-		return res.json({ token, username: user.username });
-	} catch (e) {
-		// eslint-disable-next-line no-console
-		console.error(e);
-		return res.status(500).json({ error: "failed to restore guest session" });
-	}
-});
-
 // Google OAuth (Authorization Code flow)
 router.get("/google", (req, res) => {
 	try {

@@ -91,45 +91,6 @@ export default function Auth() {
 		}
 	};
 
-	const handleGuestSignup = async () => {
-		if (!requireSignupConsents()) return;
-		setLoading(true);
-		setError(null);
-		try {
-			const res = (await postJson("/api/auth/guest-signup", {})) as { token?: string; username?: string };
-			if (!res.token) throw new Error("Missing token");
-			finishAuth(res.token, res.username || "guest");
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Could not start as guest");
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const handleGuestLogin = async () => {
-		const existing = localStorage.getItem("auth_token");
-		if (!existing) {
-			setError("No saved guest session in this browser. Use Guest sign up first.");
-			return;
-		}
-		setLoading(true);
-		setError(null);
-		try {
-			const res = await fetch(`${API_BASE}/api/auth/guest-login`, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${existing}` },
-			});
-			const data = (await res.json().catch(() => ({}))) as { token?: string; username?: string; error?: string };
-			if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Guest session invalid");
-			if (!data.token) throw new Error("Missing token");
-			finishAuth(data.token, data.username || localStorage.getItem("last_username") || "guest");
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Could not restore guest session");
-		} finally {
-			setLoading(false);
-		}
-	};
-
 	return (
 		<div className="min-h-screen flex items-center justify-center bg-[#0B0F1A] relative overflow-hidden p-4">
 			<div className="absolute -top-20 -left-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" />
@@ -221,37 +182,6 @@ export default function Auth() {
 						>
 							Continue with Google
 						</Button>
-						<div className="relative py-2">
-							<div className="absolute inset-0 flex items-center">
-								<div className="w-full border-t border-purple-500/20" />
-							</div>
-							<div className="relative flex justify-center text-xs">
-								<span className="bg-gradient-to-br from-[#111827] to-[#1F2937] px-2 text-gray-400">guest</span>
-							</div>
-						</div>
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<Button
-								type="button"
-								variant="outline"
-								disabled={loading}
-								className="border-purple-500/30 text-white hover:bg-white/5"
-								onClick={() => void handleGuestSignup()}
-							>
-								Guest sign up
-							</Button>
-							<Button
-								type="button"
-								variant="outline"
-								disabled={loading}
-								className="border-purple-500/30 text-white hover:bg-white/5"
-								onClick={() => void handleGuestLogin()}
-							>
-								Guest login
-							</Button>
-						</div>
-						<p className="text-xs text-gray-500 text-center">
-							Guest sign up creates a new trial profile. Guest login continues the last guest session on this device.
-						</p>
 						{mode === "login" ? (
 							<p className="text-xs text-gray-500 text-center pt-2 leading-relaxed">
 								By continuing, you agree to our{" "}
@@ -266,7 +196,7 @@ export default function Auth() {
 							</p>
 						) : (
 							<p className="text-xs text-gray-500 text-center pt-2 leading-relaxed">
-								Google and guest sign-up also require the two checkboxes above.
+								Google sign-up also requires the two checkboxes above.
 							</p>
 						)}
 					</form>
