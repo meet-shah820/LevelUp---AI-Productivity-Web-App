@@ -7,7 +7,6 @@ import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";
 import { consumeAuthReturnPath, rememberAuthReturnPathFromSearch } from "../utils/authRedirect";
-import { LegalFooterLinks } from "../components/legal/LegalFooterLinks";
 
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
@@ -201,7 +200,6 @@ export default function Auth() {
 						)}
 					</form>
 				</Card>
-				<LegalFooterLinks className="mt-8" />
 			</motion.div>
 		</div>
 	);

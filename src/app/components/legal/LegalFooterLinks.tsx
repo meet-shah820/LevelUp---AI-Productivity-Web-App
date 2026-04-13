@@ -3,10 +3,17 @@ import { Link } from "react-router-dom";
 const linkClass =
 	"text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline transition-colors";
 
-export function LegalFooterLinks({ className = "" }: { className?: string }) {
+export function LegalFooterLinks({
+	className = "",
+	align = "center",
+}: {
+	className?: string;
+	align?: "center" | "start";
+}) {
+	const justify = align === "start" ? "justify-start" : "justify-center";
 	return (
 		<nav
-			className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-gray-500 ${className}`}
+			className={`flex flex-wrap items-center ${justify} gap-x-4 gap-y-2 text-xs text-gray-500 ${className}`}
 			aria-label="Legal"
 		>
 			<Link to="/privacy" className={linkClass}>

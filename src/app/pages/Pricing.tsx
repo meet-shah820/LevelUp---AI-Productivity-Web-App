@@ -16,7 +16,6 @@ import {
 } from "../utils/api";
 import { toast } from "sonner";
 import { setAuthReturnPath } from "../utils/authRedirect";
-import { LegalFooterLinks } from "../components/legal/LegalFooterLinks";
 
 function formatMoney(cents: number, currency = "usd") {
 	const code = currency.length === 3 ? currency.toUpperCase() : "USD";
@@ -275,8 +274,6 @@ export default function Pricing() {
 					);
 				})}
 			</div>
-
-			<LegalFooterLinks className="pt-4" />
 		</div>
 	);
 }
