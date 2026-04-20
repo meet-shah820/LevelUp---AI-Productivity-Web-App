@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import { refreshUserEngagement } from "../services/engagementMechanics.js";
 
 const DEFAULT_USERNAME = "shadow_hunter";
 
@@ -19,6 +20,7 @@ export async function getOrCreateDemoUser() {
  * This keeps "try without login" flows working while ensuring logged-in users are isolated.
  */
 export async function getUserForReq(req) {
-	if (req?.user) return req.user;
-	return getOrCreateDemoUser();
+	const user = req?.user ? req.user : await getOrCreateDemoUser();
+	await refreshUserEngagement(user);
+	return user;
 }

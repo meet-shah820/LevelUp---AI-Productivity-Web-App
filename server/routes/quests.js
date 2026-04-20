@@ -12,7 +12,16 @@ import { scheduleLeaderboardBroadcast } from "../services/leaderboardHub.js";
 import { generateQuestDetails } from "../services/gemini.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
 import { resolvePenaltyForQuest } from "../utils/questPenalty.js";
-import { mapQuestDifficulty, mapQuestToClientResponse } from "../utils/questClientView.js";
+import {
+	mapQuestDifficulty,
+	mapQuestToClientResponse,
+	effectiveDifficultyForEasyMode,
+} from "../utils/questClientView.js";
+import {
+	ensureRecoveryQuest,
+	ensureStreakSaverQuest,
+	buildEngagementPublic,
+} from "../services/engagementMechanics.js";
 import {
 	startOfDay,
 	endOfDay,
@@ -25,6 +34,7 @@ import {
 	periodKeyDaily,
 	periodKeyWeeklyRolling,
 	periodKeyMonthlyRolling,
+	isQuestTimeframeMissedForPenalty,
 } from "../utils/timeframePeriod.js";
 
 const router = express.Router();
@@ -109,7 +119,15 @@ router.get("/", async (req, res) => {
 		const timeframe = (req.query.timeframe || "daily").toString();
 		const goalId = req.query.goalId ? req.query.goalId.toString() : null;
 		const diffRaw = req.query.difficulty ? String(req.query.difficulty).toLowerCase() : null;
-		const userId = (await getUserForReq(req))._id;
+		const user = await getUserForReq(req);
+		const userId = user._id;
+		if (timeframe === "daily") {
+			await ensureRecoveryQuest(user);
+			await ensureStreakSaverQuest(user);
+		}
+		const engagement = buildEngagementPublic(user);
+		const cr = engagement.comebackBonusQuestsRemaining;
+		const ez = engagement.easyModeTier;
 		let filter = { userId, type: timeframe };
 		if (goalId) filter = { ...filter, goalId };
 		if (diffRaw && ["easy", "medium", "hard"].includes(diffRaw)) {
@@ -144,7 +162,10 @@ router.get("/", async (req, res) => {
 			quests = await Quest.find({ ...filter }).sort({ createdAt: -1 }).lean();
 		}
 		return res.json({
-			quests: quests.map((q) => mapQuestToClientResponse(q)),
+			quests: quests.map((q) =>
+				mapQuestToClientResponse(q, { comebackBonusQuestsRemaining: cr, easyModeTier: ez })
+			),
+			engagement,
 		});
 	} catch (e) {
 		// eslint-disable-next-line no-console
@@ -179,33 +200,140 @@ router.get("/:id/details", async (req, res) => {
 		const goal = quest.goalId ? await Goal.findById(quest.goalId).lean() : null;
 		const userLevel = calculateLevelFromXp(user.xp);
 		const diff = mapQuestDifficulty(quest.difficulty);
+		const specialTags = new Set(["recovery", "welcome_bonus", "streak_saver"]);
 
 		if (!quest.isCompleted) {
-			const pen = resolvePenaltyForQuest(quest);
+			if (specialTags.has(quest.questTag)) {
+				const userSnap = await User.findById(user._id).select("comebackBonusQuestsRemaining").lean();
+				const cr = userSnap?.comebackBonusQuestsRemaining ?? 0;
+				const projectedXp = cr > 0 ? Math.round(quest.xpReward * 2) : quest.xpReward;
+				const b = quest.briefing || {};
+				return res.json({
+					quest: {
+						id: quest._id,
+						title: quest.title,
+						xpReward: projectedXp,
+						statType: quest.statType,
+						type: quest.type,
+						isCompleted: false,
+						goalId: quest.goalId,
+						difficulty: diff,
+					},
+					goal: goal
+						? { id: goal._id, title: goal.title, category: goal.category }
+						: null,
+					details: {
+						summary: String(b.summary || "").trim() || quest.title,
+						whatYouImprove: String(b.whatYouImprove || "").trim(),
+						doneWhen: String(b.doneWhen || "").trim(),
+						steps: Array.isArray(b.steps) ? b.steps.map((s) => String(s)) : [],
+						tips: String(b.tips || "").trim(),
+						source: String(b.source || "fallback"),
+						howTo: String(b.howTo || "").trim(),
+					},
+					isPenaltyActive: false,
+					originalTitle: quest.title,
+					questTag: quest.questTag,
+				});
+			}
+			if (isQuestTimeframeMissedForPenalty(quest)) {
+				const effD = effectiveDifficultyForEasyMode(quest.difficulty, user.easyModeTier || 0);
+				const pen = resolvePenaltyForQuest({ ...quest.toObject(), difficulty: effD });
+				const crPen = Math.max(0, Number(user.comebackBonusQuestsRemaining || 0));
+				const projectedXpPen = crPen > 0 ? Math.round(quest.xpReward * 2) : quest.xpReward;
+				return res.json({
+					quest: {
+						id: quest._id,
+						title: pen.title,
+						xpReward: projectedXpPen,
+						statType: quest.statType,
+						type: quest.type,
+						isCompleted: false,
+						goalId: quest.goalId,
+						difficulty: mapQuestDifficulty(effD),
+					},
+					goal: goal
+						? { id: goal._id, title: goal.title, category: goal.category }
+						: null,
+					details: {
+						summary: pen.summary,
+						whatYouImprove: pen.whatYouImprove,
+						doneWhen: pen.doneWhen,
+						steps: pen.steps,
+						tips: "",
+						source: "fallback",
+						howTo: pen.howTo || "",
+					},
+					isPenaltyActive: true,
+					originalTitle: quest.title,
+				});
+			}
+
+			let detailsInWindow;
+			if (hasStoredBriefing(quest)) {
+				detailsInWindow = {
+					summary: quest.briefing.summary,
+					whatYouImprove: quest.briefing.whatYouImprove || "",
+					doneWhen: quest.briefing.doneWhen || "",
+					steps: quest.briefing.steps,
+					tips: quest.briefing.tips || "",
+					source: quest.briefing.source || "fallback",
+					howTo: quest.briefing.howTo || "",
+				};
+			} else {
+				const briefDiffIw = mapQuestDifficulty(
+					effectiveDifficultyForEasyMode(quest.difficulty, user.easyModeTier || 0)
+				);
+				detailsInWindow = await generateQuestDetails({
+					questTitle: quest.title,
+					goalTitle: goal?.title || "Your goal",
+					goalCategory: goal?.category || "general",
+					goalRarity: goal?.rarity || "common",
+					questType: quest.type || "daily",
+					statType: quest.statType,
+					xpReward: quest.xpReward,
+					difficulty: briefDiffIw,
+					userLevel,
+					isCompleted: false,
+				});
+				quest.briefing = {
+					summary: detailsInWindow.summary,
+					whatYouImprove: detailsInWindow.whatYouImprove || "",
+					doneWhen: detailsInWindow.doneWhen || "",
+					requirements: "",
+					howTo: detailsInWindow.howTo || "",
+					steps: detailsInWindow.steps || [],
+					tips: detailsInWindow.tips || "",
+					source: detailsInWindow.source === "gemini" ? "gemini" : "fallback",
+				};
+				quest.briefingGeneratedAt = new Date();
+				quest.briefingSchemaVersion = BRIEFING_SCHEMA_VERSION;
+				await quest.save();
+			}
+			const briefDiffOut = mapQuestDifficulty(
+				effectiveDifficultyForEasyMode(quest.difficulty, user.easyModeTier || 0)
+			);
+			const crIw = Math.max(0, Number(user.comebackBonusQuestsRemaining || 0));
+			const projectedXpIw = crIw > 0 ? Math.round(quest.xpReward * 2) : quest.xpReward;
 			return res.json({
 				quest: {
 					id: quest._id,
-					title: pen.title,
-					xpReward: quest.xpReward,
+					title: quest.title,
+					xpReward: projectedXpIw,
 					statType: quest.statType,
 					type: quest.type,
 					isCompleted: false,
 					goalId: quest.goalId,
-					difficulty: diff,
+					difficulty: briefDiffOut,
 				},
 				goal: goal
 					? { id: goal._id, title: goal.title, category: goal.category }
 					: null,
 				details: {
-					summary: pen.summary,
-					whatYouImprove: pen.whatYouImprove,
-					doneWhen: pen.doneWhen,
-					steps: pen.steps,
-					tips: "",
-					source: "fallback",
-					howTo: pen.howTo || "",
+					...detailsInWindow,
+					howTo: detailsInWindow.howTo || "",
 				},
-				isPenaltyActive: true,
+				isPenaltyActive: false,
 				originalTitle: quest.title,
 			});
 		}
@@ -222,6 +350,9 @@ router.get("/:id/details", async (req, res) => {
 				howTo: quest.briefing.howTo || "",
 			};
 		} else {
+			const briefDiff = mapQuestDifficulty(
+				effectiveDifficultyForEasyMode(quest.difficulty, user.easyModeTier || 0)
+			);
 			details = await generateQuestDetails({
 				questTitle: quest.title,
 				goalTitle: goal?.title || "Your goal",
@@ -230,7 +361,7 @@ router.get("/:id/details", async (req, res) => {
 				questType: quest.type || "daily",
 				statType: quest.statType,
 				xpReward: quest.xpReward,
-				difficulty: diff,
+				difficulty: briefDiff,
 				userLevel,
 				isCompleted: !!quest.isCompleted,
 			});
@@ -298,8 +429,12 @@ router.patch("/:id/complete", async (req, res) => {
 			return res.status(500).json({ error: "User not found for quest" });
 		}
 
+		const comebackOn = (user.comebackBonusQuestsRemaining || 0) > 0;
+		const mult = comebackOn ? 2 : 1;
+		const xpGrant = Math.round(quest.xpReward * mult);
+
 		const preLevel = calculateLevelFromXp(user.xp);
-		user.xp += quest.xpReward;
+		user.xp += xpGrant;
 
 		// increment appropriate stat
 		const incMap = {
@@ -313,14 +448,27 @@ router.patch("/:id/complete", async (req, res) => {
 
 		const postLevel = calculateLevelFromXp(user.xp);
 		user.level = postLevel;
+		if (comebackOn) {
+			user.comebackBonusQuestsRemaining = Math.max(0, (user.comebackBonusQuestsRemaining || 0) - 1);
+		}
+		const qTag = quest.questTag || "standard";
+		if (qTag === "recovery") {
+			user.easyModeTier = 4;
+		} else if ((user.easyModeTier || 0) > 0) {
+			user.easyModeTier = Math.max(0, (user.easyModeTier || 0) - 1);
+		}
 		await user.save();
 
 		await History.create({
 			userId: user._id,
 			type: "quest_complete",
-			xpChange: quest.xpReward,
+			xpChange: xpGrant,
 			questId: quest._id,
-			meta: { statType: quest.statType, title: quest.title },
+			meta: {
+				statType: quest.statType,
+				title: quest.title,
+				...(mult === 2 ? { comebackMultiplier: 2, baseXpReward: quest.xpReward } : {}),
+			},
 		});
 		if (postLevel > preLevel) {
 			await History.create({
@@ -349,6 +497,10 @@ router.patch("/:id/complete", async (req, res) => {
 			updated: true,
 			leveledUp: postLevel > preLevel || leveledUpFromBonus,
 			timeframeBonusXp: bonus.awarded || 0,
+			xpGranted: xpGrant,
+			comebackMultiplier: mult,
+			comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining ?? 0,
+			easyModeTier: user.easyModeTier ?? 0,
 			user: {
 				level: user.level,
 				xp: user.xp,
@@ -381,18 +533,31 @@ router.patch("/:id/revert", async (req, res) => {
 		quest.isCompleted = false;
 		await quest.save();
 
+		const lastGrant = await History.findOne({
+			userId: user._id,
+			questId: quest._id,
+			type: "quest_complete",
+			xpChange: { $gt: 0 },
+		})
+			.sort({ occurredAt: -1 })
+			.lean();
+		const granted = lastGrant?.xpChange ?? quest.xpReward;
+
 		// decrement xp and stat (minimum 0)
-		user.xp = Math.max(0, user.xp - quest.xpReward);
+		user.xp = Math.max(0, user.xp - granted);
 		const map = { str: "strength", int: "intelligence", agi: "agility", vit: "vitality" };
 		const key = map[quest.statType] || "strength";
 		user.stats[key] = Math.max(0, (user.stats[key] || 0) - 1);
 		user.level = calculateLevelFromXp(user.xp);
+		if (lastGrant?.meta?.comebackMultiplier === 2) {
+			user.comebackBonusQuestsRemaining = Math.min(3, (user.comebackBonusQuestsRemaining || 0) + 1);
+		}
 		await user.save();
 
 		await History.create({
 			userId: user._id,
 			type: "quest_complete",
-			xpChange: -quest.xpReward,
+			xpChange: -granted,
 			questId: quest._id,
 			meta: { reverted: true, statType: quest.statType, title: quest.title },
 		});

@@ -31,6 +31,12 @@ export type Quest = {
   isPenaltyActive?: boolean;
   originalTitle?: string;
   category: string;
+  /** Server: special engagement quests. */
+  questTag?: "standard" | "recovery" | "welcome_bonus" | "streak_saver";
+  /** Server: next quest completion grants 2× base XP (comeback). */
+  comebackBoostApplies?: boolean;
+  /** Server: easy-mode ramp tier (post-recovery). */
+  easyModeTier?: number;
 };
 
 export const categoryColors: Record<Goal["category"], { from: string; to: string; glow: string }> = {

@@ -93,7 +93,12 @@ router.get("/", async (req, res) => {
 				rank: user.rank || "E",
 				nextLevelXp: Math.pow(user.level, 2) * 100, // inverse of given formula
 			},
-			quests: todaysQuests.map((q) => mapQuestToClientResponse(q)),
+			quests: todaysQuests.map((q) =>
+				mapQuestToClientResponse(q, {
+					comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining || 0,
+					easyModeTier: user.easyModeTier || 0,
+				})
+			),
 			progress: {
 				completed,
 				total,

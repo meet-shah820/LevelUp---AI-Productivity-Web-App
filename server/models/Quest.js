@@ -4,6 +4,12 @@ const QuestSchema = new mongoose.Schema(
 	{
 		userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
 		goalId: { type: mongoose.Schema.Types.ObjectId, ref: "Goal", required: true, index: true },
+		questTag: {
+			type: String,
+			enum: ["standard", "recovery", "welcome_bonus", "streak_saver"],
+			default: "standard",
+			index: true,
+		},
 		title: { type: String, required: true },
 		xpReward: { type: Number, required: true },
 		statType: { type: String, enum: ["str", "int", "agi", "vit"], required: true },

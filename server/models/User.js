@@ -39,6 +39,16 @@ const UserSchema = new mongoose.Schema(
 		rank: { type: String, enum: ["E", "D", "C", "B", "A", "S"], default: "E" },
 		stats: { type: StatsSchema, default: () => ({}) },
 		streak: { type: Number, default: 0 },
+		/** Updated whenever the app resolves the current user (see `getUserForReq`). */
+		lastAppOpenAt: { type: Date, default: null },
+		/** After 7+ days away, the next N quest completions grant 2× base XP (timeframe set bonus unchanged). */
+		comebackBonusQuestsRemaining: { type: Number, default: 0 },
+		/** After 7+ days away: leaderboard rank uses boosted effective XP until this instant (local server clock). */
+		leaderboardUnderdogUntil: { type: Date, default: null },
+		/**
+		 * Post-recovery easy ramp: 4 = softest penalties / easiest tier, counts down toward 0 on each quest completion.
+		 */
+		easyModeTier: { type: Number, default: 0 },
 		billing: {
 			/** free | starter | pro | elite — synced from Stripe webhooks when subscribed */
 			tier: { type: String, enum: ["free", "starter", "pro", "elite"], default: "free" },

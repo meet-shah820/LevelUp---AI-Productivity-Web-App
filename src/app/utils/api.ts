@@ -439,15 +439,33 @@ export type LeaderboardEntry = {
 	statSum: number;
 };
 
+export type LeaderboardUnderdogInfo = {
+	active: boolean;
+	endsAt: string | null;
+	multiplier: number;
+};
+
 export type LeaderboardResponse = {
 	entries: LeaderboardEntry[];
 	totalUsers: number;
 	yourRank: LeaderboardEntry | null;
+	/** Hunter rank bracket for this board (E–S). */
+	rankBracket: string;
+	/** Signed-in viewer's actual Hunter rank. */
+	viewerHunterRank: string | null;
+	/** True when the viewer is in the same bracket as `rankBracket` (they can appear in `yourRank`). */
+	viewerInBracket: boolean;
+	viewerLeaderboardUnderdog?: LeaderboardUnderdogInfo | null;
 	sort: string;
 };
 
-export async function getLeaderboard(limit = 50): Promise<LeaderboardResponse> {
-	const res = await apiFetch(`/api/leaderboard?limit=${encodeURIComponent(String(limit))}`);
+const LEADERBOARD_RANK_QUERY = new Set(["E", "D", "C", "B", "A", "S"]);
+
+export async function getLeaderboard(limit = 50, rank?: string): Promise<LeaderboardResponse> {
+	const params = new URLSearchParams({ limit: String(limit) });
+	const r = rank != null ? String(rank).trim().toUpperCase() : "";
+	if (r && LEADERBOARD_RANK_QUERY.has(r)) params.set("rank", r);
+	const res = await apiFetch(`/api/leaderboard?${params.toString()}`);
 	if (!res.ok) throw new Error("Failed to load leaderboard");
 	return res.json();
 }

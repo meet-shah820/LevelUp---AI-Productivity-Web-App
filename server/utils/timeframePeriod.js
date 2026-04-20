@@ -124,3 +124,18 @@ export function computeQuestExpiry(type, date) {
 	if (type === "monthly") return rollingMonthlyEnd(d);
 	return endOfDay(d);
 }
+
+/**
+ * True when an incomplete quest's scheduled window has ended (local server time).
+ * Used to gate "penalty protocol" UI: until then, users see the normal quest title/briefing.
+ */
+export function isQuestTimeframeMissedForPenalty(quest, now = new Date()) {
+	if (!quest || quest.isCompleted) return false;
+	const tag = quest.questTag || "standard";
+	if (tag !== "standard") return false;
+	const t = quest.type || "daily";
+	const anchor = quest.date ? new Date(quest.date) : now;
+	const end =
+		t === "weekly" ? rollingWeeklyEnd(anchor) : t === "monthly" ? rollingMonthlyEnd(anchor) : endOfDay(anchor);
+	return now.getTime() > end.getTime();
+}

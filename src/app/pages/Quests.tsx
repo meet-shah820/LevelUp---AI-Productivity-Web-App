@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Clock, Zap, Target, Calendar, Filter, Signal } from "lucide-react";
 import { Card } from "../components/ui/card";
@@ -96,6 +96,22 @@ export default function Quests() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const allQuests: Quest[] = [];
   const [quests, setQuests] = useState<Quest[]>(allQuests);
+  const [engagement, setEngagement] = useState<{
+    comebackBonusQuestsRemaining: number;
+    comebackBoostActive: boolean;
+    leaderboardUnderdogActive?: boolean;
+    leaderboardUnderdogEndsAt?: string | null;
+    easyModeTier?: number;
+    easyModeActive?: boolean;
+  }>({
+    comebackBonusQuestsRemaining: 0,
+    comebackBoostActive: false,
+    leaderboardUnderdogActive: false,
+    leaderboardUnderdogEndsAt: null,
+    easyModeTier: 0,
+    easyModeActive: false,
+  });
+  const mountedRef = useRef(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailQuestId, setDetailQuestId] = useState<string | null>(null);
   // Per-card timers will update locally; avoid page-wide rerenders.
@@ -107,52 +123,84 @@ export default function Quests() {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    const mapRow = (q: any, timeframe: Quest["timeframe"]): Quest => ({
-      id: q.id,
-      goalId: q.goalId || "",
-      title: q.title,
-      description: typeof q.executionPreview === "string" ? q.executionPreview.trim() : "",
-      xp: q.xp,
-      completed: q.isCompleted,
-      timeframe,
-      difficulty: mapDifficultyFromApi(q.difficulty),
-      category: "",
-      expiresAt: q.expiresAt ? String(q.expiresAt) : undefined,
-      isPenaltyActive: !!q.isPenaltyActive,
-      originalTitle: typeof q.originalTitle === "string" ? q.originalTitle : "",
-    });
-    async function loadGoalsAndQuests() {
-      try {
-        // Goals first: GET /api/goals removes all quests when there are no active goals.
-        const res = await getGoals();
-        if (!cancelled) setGoals(mapServerGoals(res.goals || []));
-        const daily = await getQuests("daily");
-        const weekly = await getQuests("weekly");
-        const monthly = await getQuests("monthly");
-        const mapped: Quest[] = [
-          ...(daily.quests || []).map((q: any) => mapRow(q, "daily")),
-          ...(weekly.quests || []).map((q: any) => mapRow(q, "weekly")),
-          ...(monthly.quests || []).map((q: any) => mapRow(q, "monthly")),
-        ];
-        if (!cancelled) setQuests(mapped);
-      } catch {
-        if (!cancelled) {
-          setGoals([]);
-          setQuests(allQuests);
-        }
-      }
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadGoalsAndQuests = useCallback(async () => {
+    const mapRow = (q: any, timeframe: Quest["timeframe"]): Quest => {
+      const tagRaw = String(q.questTag || "standard");
+      const questTag: Quest["questTag"] =
+        tagRaw === "recovery" || tagRaw === "welcome_bonus" || tagRaw === "streak_saver"
+          ? (tagRaw as Quest["questTag"])
+          : "standard";
+      return {
+        id: q.id,
+        goalId: q.goalId || "",
+        title: q.title,
+        description: typeof q.executionPreview === "string" ? q.executionPreview.trim() : "",
+        xp: q.xp,
+        completed: q.isCompleted,
+        timeframe,
+        difficulty: mapDifficultyFromApi(q.difficulty),
+        category: "",
+        expiresAt: q.expiresAt ? String(q.expiresAt) : undefined,
+        isPenaltyActive: !!q.isPenaltyActive,
+        originalTitle: typeof q.originalTitle === "string" ? q.originalTitle : "",
+        questTag,
+        comebackBoostApplies: !!q.comebackBoostApplies,
+        easyModeTier: typeof q.easyModeTier === "number" ? q.easyModeTier : 0,
+      };
+    };
+    try {
+      const res = await getGoals();
+      if (!mountedRef.current) return;
+      setGoals(mapServerGoals(res.goals || []));
+      const daily = await getQuests("daily");
+      if (!mountedRef.current) return;
+      setEngagement({
+        comebackBonusQuestsRemaining: Number(daily.engagement?.comebackBonusQuestsRemaining) || 0,
+        comebackBoostActive: !!daily.engagement?.comebackBoostActive,
+        leaderboardUnderdogActive: !!daily.engagement?.leaderboardUnderdogActive,
+        leaderboardUnderdogEndsAt: daily.engagement?.leaderboardUnderdogEndsAt ?? null,
+        easyModeTier: Number(daily.engagement?.easyModeTier) || 0,
+        easyModeActive: !!daily.engagement?.easyModeActive,
+      });
+      const [weekly, monthly] = await Promise.all([getQuests("weekly"), getQuests("monthly")]);
+      if (!mountedRef.current) return;
+      const mapped: Quest[] = [
+        ...(daily.quests || []).map((q: any) => mapRow(q, "daily")),
+        ...(weekly.quests || []).map((q: any) => mapRow(q, "weekly")),
+        ...(monthly.quests || []).map((q: any) => mapRow(q, "monthly")),
+      ];
+      setQuests(mapped);
+    } catch {
+      if (!mountedRef.current) return;
+      setGoals([]);
+      setQuests(allQuests);
+      setEngagement({
+        comebackBonusQuestsRemaining: 0,
+        comebackBoostActive: false,
+        leaderboardUnderdogActive: false,
+        leaderboardUnderdogEndsAt: null,
+        easyModeTier: 0,
+        easyModeActive: false,
+      });
     }
+  }, []);
+
+  useEffect(() => {
     void loadGoalsAndQuests();
     const onRank = () => {
       void loadGoalsAndQuests();
     };
     window.addEventListener(RANK_UPDATED_EVENT, onRank);
     return () => {
-      cancelled = true;
       window.removeEventListener(RANK_UPDATED_EVENT, onRank);
     };
-  }, []);
+  }, [loadGoalsAndQuests]);
 
   useEffect(() => {
     if (!goalIdFilter) return;
@@ -220,13 +268,13 @@ export default function Quests() {
 
   const handleCompleteQuest = async (questId: string) => {
     setQuests(quests.map((q) => (q.id === questId ? { ...q, completed: true } : q)));
-    // If questId looks like a backend id, notify backend too
     if (questId && questId.length >= 12) {
       try {
         await completeQuest(questId);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+        await loadGoalsAndQuests();
       } catch {
-        // ignore errors for demo data
+        await loadGoalsAndQuests();
       }
     }
   };
@@ -236,9 +284,11 @@ export default function Quests() {
     if (questId && questId.length >= 12) {
       try {
         await revertQuest(questId);
-        // Refresh header XP + notifications (Layout listens to this event)
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
-      } catch {}
+        await loadGoalsAndQuests();
+      } catch {
+        await loadGoalsAndQuests();
+      }
     }
   };
 
@@ -338,7 +388,15 @@ export default function Quests() {
           } ${
             quest.completed
               ? "bg-green-500/10 border-green-500/30"
-              : `${goalIdFilter && quest.goalId === goalIdFilter ? "ring-2 ring-indigo-500/60" : ""} bg-[#111827] border-purple-500/20 hover:border-purple-500/40`
+              : `${goalIdFilter && quest.goalId === goalIdFilter ? "ring-2 ring-indigo-500/60" : ""} ${
+                  quest.questTag === "recovery"
+                    ? "ring-2 ring-teal-500/40 border-teal-500/25"
+                    : quest.questTag === "welcome_bonus"
+                      ? "ring-2 ring-indigo-400/45 border-indigo-500/25"
+                      : quest.questTag === "streak_saver"
+                        ? "ring-2 ring-emerald-500/40 border-emerald-500/25"
+                        : ""
+                } bg-[#111827] border-purple-500/20 hover:border-purple-500/40`
           }`}
         >
           <div className="p-5 space-y-4">
@@ -365,6 +423,18 @@ export default function Quests() {
                     <Badge className="bg-rose-500/20 text-rose-200 border-rose-500/40 text-xs">
                       Penalty protocol
                     </Badge>
+                  )}
+                  {quest.questTag === "recovery" && !quest.completed && (
+                    <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">Recovery quest</Badge>
+                  )}
+                  {quest.questTag === "welcome_bonus" && !quest.completed && (
+                    <Badge className="bg-indigo-500/25 text-indigo-100 border-indigo-400/40 text-xs">Welcome back bonus</Badge>
+                  )}
+                  {quest.questTag === "streak_saver" && !quest.completed && (
+                    <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-500/40 text-xs">Streak saver</Badge>
+                  )}
+                  {quest.comebackBoostApplies && !quest.completed && (
+                    <Badge className="bg-amber-500/20 text-amber-100 border-amber-500/40 text-xs">2× comeback XP</Badge>
                   )}
                 </div>
                 <h3
@@ -405,9 +475,14 @@ export default function Quests() {
             {/* Footer */}
             <div className="flex items-center justify-between pt-3 border-t border-purple-500/10">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-indigo-400" />
-                  <span className="text-sm font-bold text-indigo-400">+{quest.xp} XP</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-indigo-400" />
+                    <span className="text-sm font-bold text-indigo-400">+{quest.xp} XP</span>
+                  </div>
+                  {quest.comebackBoostApplies && !quest.completed && (
+                    <span className="text-[11px] text-amber-200/90">Includes comeback multiplier on complete</span>
+                  )}
                 </div>
               </div>
 
@@ -456,6 +531,64 @@ export default function Quests() {
         <h1 className="text-3xl font-bold text-white">Quests</h1>
         <p className="text-gray-400">Complete quests to gain XP and achieve your goals</p>
       </motion.div>
+
+      {engagement.comebackBoostActive && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-amber-500/35 bg-gradient-to-r from-amber-500/15 to-orange-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4"
+        >
+          <div className="flex items-center gap-2 text-amber-100">
+            <Zap className="w-5 h-5 shrink-0 text-amber-300" aria-hidden />
+            <span className="font-semibold">Comeback boost</span>
+          </div>
+          <p className="text-sm text-amber-100/90 flex-1">
+            You were away for more than a week. Your next{" "}
+            <span className="font-bold text-white tabular-nums">{engagement.comebackBonusQuestsRemaining}</span> quest
+            completions earn <span className="font-bold text-white">2×</span> base XP (daily set bonus unchanged).
+          </p>
+        </motion.div>
+      )}
+
+      {engagement.leaderboardUnderdogActive && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-sky-500/35 bg-gradient-to-r from-sky-500/12 to-blue-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4"
+        >
+          <div className="flex items-center gap-2 text-sky-100">
+            <Signal className="w-5 h-5 shrink-0 text-sky-300" aria-hidden />
+            <span className="font-semibold">Underdog leaderboard boost</span>
+          </div>
+          <p className="text-sm text-sky-100/90 flex-1">
+            Your rank uses a higher effective XP multiplier for about two days after a long break. Open the Leaderboard
+            to see your standing.{" "}
+            {engagement.leaderboardUnderdogEndsAt ? (
+              <span className="text-white/80">
+                Ends {new Date(engagement.leaderboardUnderdogEndsAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+              </span>
+            ) : null}
+          </p>
+        </motion.div>
+      )}
+
+      {engagement.easyModeActive && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-violet-500/30 bg-gradient-to-r from-violet-500/12 to-fuchsia-500/8 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4"
+        >
+          <div className="flex items-center gap-2 text-violet-100">
+            <Target className="w-5 h-5 shrink-0 text-violet-300" aria-hidden />
+            <span className="font-semibold">Easy mode</span>
+          </div>
+          <p className="text-sm text-violet-100/90 flex-1">
+            After your recovery quest, penalties ease in tiers. Each quest you complete dials difficulty back toward
+            normal. Current tier:{" "}
+            <span className="font-bold text-white tabular-nums">{engagement.easyModeTier ?? 0}</span> (0 = normal).
+          </p>
+        </motion.div>
+      )}
 
       {/* Stats Overview */}
       <motion.div

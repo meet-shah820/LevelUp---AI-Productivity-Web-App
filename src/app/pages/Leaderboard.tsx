@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "../components/ui/card";
+import { Button } from "../components/ui/button";
 import { motion } from "motion/react";
 import { getLeaderboard, getLeaderboardWebSocketUrl, type LeaderboardEntry, type LeaderboardResponse } from "../utils/api";
 import { Radio, Trophy } from "lucide-react";
+
+const RANK_TABS = ["E", "D", "C", "B", "A", "S"] as const;
 
 function formatXp(n: number): string {
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -22,20 +25,22 @@ export default function Leaderboard() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [live, setLive] = useState(false);
+	/** When null, the API defaults to the viewer's own rank bracket. */
+	const [selectedRank, setSelectedRank] = useState<string | null>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 	const scrolledForUserIdRef = useRef<string | null>(null);
 
 	const load = useCallback(async () => {
 		try {
 			setError(null);
-			const res = await getLeaderboard(50);
+			const res = await getLeaderboard(50, selectedRank ?? undefined);
 			setData(res);
 		} catch {
 			setError("Failed to load leaderboard");
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [selectedRank]);
 
 	useEffect(() => {
 		void load();
@@ -81,6 +86,11 @@ export default function Leaderboard() {
 	}, [load]);
 
 	const yourId = data?.yourRank?.userId;
+	const bracketHighlight = selectedRank ?? data?.rankBracket ?? null;
+
+	useEffect(() => {
+		scrolledForUserIdRef.current = null;
+	}, [data?.rankBracket]);
 
 	useEffect(() => {
 		if (!data?.entries?.length || !yourId) return;
@@ -112,22 +122,71 @@ export default function Leaderboard() {
 					</span>
 				</div>
 				<p className="text-white/55 text-sm md:text-base max-w-2xl">
-					Rankings use total XP, then Hunter rank, level, and stat points. When any signed-in player updates progress, this list refreshes
-					automatically for everyone connected.
+					Each Hunter rank (E through S) has its own board. You only compete with players in the same rank. After you
+					promote (for example E → D), you move to the next bracket. Sorting is by XP, then level and stats. Underdog
+					boost applies only on your own board when active.
 				</p>
 			</motion.div>
 
+			<div className="flex flex-wrap gap-2 mb-6">
+				{RANK_TABS.map((r) => (
+					<Button
+						key={r}
+						type="button"
+						size="sm"
+						variant={bracketHighlight != null && bracketHighlight === r ? "default" : "outline"}
+						className={
+							bracketHighlight != null && bracketHighlight === r
+								? "bg-amber-500/90 text-black hover:bg-amber-500 border-0"
+								: "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+						}
+						onClick={() => setSelectedRank(r)}
+					>
+						Rank {r}
+					</Button>
+				))}
+			</div>
+
+			{data && !data.viewerInBracket && data.viewerHunterRank && (
+				<Card className="mb-4 p-3 border border-amber-500/20 bg-amber-500/5 text-sm text-amber-100/95">
+					Your Hunter rank is <span className="font-semibold text-white">{data.viewerHunterRank}</span>. This tab
+					shows rank <span className="font-semibold text-white">{data.rankBracket}</span> only — open Rank{" "}
+					<span className="font-semibold text-white">{data.viewerHunterRank}</span> to see your position.
+				</Card>
+			)}
+
 			{data?.yourRank && (
 				<Card className="mb-6 p-4 border border-indigo-500/25 bg-indigo-500/5">
-					<p className="text-xs uppercase tracking-wider text-indigo-300/80 mb-1">Your standing</p>
+					<p className="text-xs uppercase tracking-wider text-indigo-300/80 mb-1">
+						Your standing · Rank {data.rankBracket}
+					</p>
 					<p className="text-white text-lg">
 						<span className="font-semibold text-indigo-200">#{data.yourRank.position}</span>
 						<span className="text-white/50"> / {data.totalUsers}</span>
 						<span className="text-white/60"> · {data.yourRank.displayName}</span>
 					</p>
 					<p className="text-sm text-white/45 mt-1">
-						Level {data.yourRank.level} · Rank {data.yourRank.rank} · {formatXp(data.yourRank.xp)} XP · {data.yourRank.statSum} stat pts
+						Level {data.yourRank.level} · Hunter {data.yourRank.rank} · {formatXp(data.yourRank.xp)} XP ·{" "}
+						{data.yourRank.statSum} stat pts
 					</p>
+					{data.viewerLeaderboardUnderdog?.active && (
+						<p className="text-sm text-sky-200/95 mt-3 pt-3 border-t border-white/10">
+							<span className="font-semibold text-sky-100">Underdog boost active</span>
+							{" — "}
+							Your rank is computed with {data.viewerLeaderboardUnderdog.multiplier}× effective XP for sorting. Listed XP
+							stays your real total.
+							{data.viewerLeaderboardUnderdog.endsAt ? (
+								<>
+									{" "}
+									Ends {new Date(data.viewerLeaderboardUnderdog.endsAt).toLocaleString(undefined, {
+										dateStyle: "medium",
+										timeStyle: "short",
+									})}
+									.
+								</>
+							) : null}
+						</p>
+					)}
 				</Card>
 			)}
 
@@ -184,10 +243,12 @@ export default function Leaderboard() {
 							);
 						})}
 					</ul>
-					{data.entries.length === 0 && <p className="p-6 text-white/45 text-center">No players yet.</p>}
+					{data.entries.length === 0 && (
+						<p className="p-6 text-white/45 text-center">No players in rank {data.rankBracket} yet.</p>
+					)}
 					{data.totalUsers > data.entries.length && (
 						<p className="px-3 py-2 text-xs text-white/35 border-t border-white/10">
-							Showing top {data.entries.length} of {data.totalUsers} players.
+							Rank {data.rankBracket}: showing top {data.entries.length} of {data.totalUsers} players.
 						</p>
 					)}
 				</Card>
