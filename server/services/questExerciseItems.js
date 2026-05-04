@@ -7,6 +7,60 @@ function looksCompoundExerciseNarrative(label) {
 	return !!(m && m.length >= 2);
 }
 
+/** Meal prep + other compound briefings (protein portions + carb portions in one line). */
+function looksCompoundMealPrepNarrative(label) {
+	const s = String(label || "");
+	return (
+		/\d+\s+\w*\s*portions?\b/i.test(s) &&
+		/\s+and\s+(?:\d+\s+|\w+\s+)?(?:carb|protein|fat|veg|vegetable|fiber)\w*\s+portions?\b/i.test(s)
+	);
+}
+
+/** True when the row should be split into multiple checklist lines. */
+function looksCompoundTaskNarrative(label) {
+	return looksCompoundExerciseNarrative(label) || looksCompoundMealPrepNarrative(label);
+}
+
+/**
+ * Split "Prepare … protein portions … and … carb portions …" plus optional ". Store … Photograph …" tail.
+ * @param {string} t
+ * @returns {string[]|null}
+ */
+function splitParallelMealPrepPortions(t) {
+	const reAnd =
+		/\s+and\s+(?=\d+(?:\.\d+)?\s+(?:carb|protein|fat|veg(?:etable)?|fiber)\w*\s+portions\b|\d+(?:\.\d+)?\s+\w+\s+portions\b)/i;
+	if (!reAnd.test(t)) return null;
+
+	const halves = t.split(reAnd).map((s) => s.trim()).filter(Boolean);
+	if (halves.length < 2) return null;
+
+	const first = halves[0].replace(/\.$/, "").trim();
+
+	let secondBlock = halves.slice(1).join(" and ");
+
+	/** Peel shared finish steps (store, photo, label) off the carb/fat clause */
+	let tail = "";
+	const peelPatterns = [/\.\s+(?=Store\b)/i, /\.\s+(?=Photograph\b)/i, /\.\s+(?=Label\s+)/i, /\.\s+(?=Pack\b)/i];
+	let peelIdx = -1;
+	for (const re of peelPatterns) {
+		const idx = secondBlock.search(re);
+		if (idx >= 0 && (peelIdx < 0 || idx < peelIdx)) peelIdx = idx;
+	}
+	if (peelIdx >= 0) {
+		tail = secondBlock.slice(peelIdx + 1).trim();
+		secondBlock = secondBlock.slice(0, peelIdx).trim();
+	}
+
+	let second = secondBlock.replace(/\.$/, "").trim();
+	if (/^\d+(?:\.\d+)?\s/.test(second) && !/^prepare\b/i.test(second)) {
+		second = `Prepare ${second}`;
+	}
+
+	const out = [first, second];
+	if (tail) out.push(tail);
+	return out;
+}
+
 /**
  * Turn one line of text into separate exercise lines when comma-separated "N sets of …" clauses exist,
  * or when multiple sentences each prescribe work.
@@ -21,6 +75,11 @@ export function splitCompoundNarrativeToExercises(text) {
 	t = t.replace(/\s*Log\s+reps?\b[^.]*\.?/i, "").trim();
 	t = t.replace(/\s*Record\s+(each\s+)?reps?\b[^.]*\.?/i, "").trim();
 	t = t.replace(/\s*Note:\s*[^.]+\.?/i, "").trim();
+
+	const mealParts = splitParallelMealPrepPortions(t);
+	if (mealParts && mealParts.length > 1) {
+		return mealParts;
+	}
 
 	const commaSplit = t.split(/\s*,\s*(?=\d+\s*sets?\s+of\b)/i);
 	if (commaSplit.length >= 2) {
@@ -40,7 +99,8 @@ export function splitCompoundNarrativeToExercises(text) {
 	const exerciseLike = sentences.filter(
 		(s) =>
 			/\d+\s*sets?\s+of\b/i.test(s) ||
-			/\b(squats?|push-?ups?|plank|deadlifts?|rows?|press(?:es)?|curls?|lunges?|pull-?ups?|burpees?)\b/i.test(s)
+			/\b(squats?|push-?ups?|plank|deadlifts?|rows?|press(?:es)?|curls?|lunges?|pull-?ups?|burpees?)\b/i.test(s) ||
+			/\b(portions?|meal|prep|kitchen|containers?)\b/i.test(s)
 	);
 	if (exerciseLike.length >= 2) {
 		return exerciseLike.map((s) => s.replace(/\.$/, "").trim());
@@ -145,7 +205,7 @@ export function buildQuestExerciseItemList(quest, goal, stepsFallback, howToFall
 	items = expandCompoundStepItems(items);
 
 	// Single row still bundles multiple prescriptions (parser missed e.g. odd punctuation)
-	if (items.length === 1 && looksCompoundExerciseNarrative(items[0].label)) {
+	if (items.length === 1 && looksCompoundTaskNarrative(items[0].label)) {
 		const parts = splitCompoundNarrativeToExercises(items[0].label);
 		if (parts.length > 1) {
 			items = parts.map((label, j) => ({
@@ -171,9 +231,9 @@ export function buildQuestExerciseItemList(quest, goal, stepsFallback, howToFall
 	// Steps didn't split but howTo has clearer multiple clauses (briefing step duplicated vs howTo detail)
 	if (
 		items.length === 1 &&
-		looksCompoundExerciseNarrative(items[0].label) &&
+		looksCompoundTaskNarrative(items[0].label) &&
 		howTo &&
-		looksCompoundExerciseNarrative(howTo)
+		looksCompoundTaskNarrative(howTo)
 	) {
 		const fromHow = splitCompoundNarrativeToExercises(howTo);
 		if (fromHow.length > 1) {
