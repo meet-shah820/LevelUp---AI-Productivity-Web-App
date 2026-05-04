@@ -96,6 +96,8 @@ export type GoalProgramModule = {
 	fitnessPlanSnapshot: FitnessPlanSnapshot;
 	/** Persisted merged reference + AI content for Program modules */
 	programModulesCache: ProgramModulesCachePayload | null;
+	/** Movements tied to today's dailies + current rolling week/month quests */
+	currentRotationMovements?: ProgramModulesMovement[];
 };
 
 export async function getGoalProgramModules(): Promise<{ modules: GoalProgramModule[] }> {

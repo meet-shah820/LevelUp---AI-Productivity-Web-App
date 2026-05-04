@@ -53,7 +53,6 @@ function mapServerGoals(raw: any[]): Goal[] {
       const d = new Date(deadlineRaw);
       deadline = Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
     }
-    const libCount = g.fitnessLibraryMatchCount;
     return {
       id: normalizeGoalId(g._id ?? g.id),
       title: g.title,
@@ -64,8 +63,6 @@ function mapServerGoals(raw: any[]): Goal[] {
       progress: 0,
       createdAt: g.createdAt,
       color: categoryColors.Fitness,
-      fitnessLibraryMatchCount:
-        typeof libCount === "number" && Number.isFinite(libCount) ? libCount : undefined,
     };
   });
 }
@@ -372,19 +369,6 @@ export default function Goals() {
                             <Badge variant="outline" className="border-white/20 text-gray-300 capitalize">
                               {goal.rarity}
                             </Badge>
-                            {goal.fitnessLibraryMatchCount != null && (
-                              <Badge
-                                variant="outline"
-                                className={
-                                  goal.fitnessLibraryMatchCount > 0
-                                    ? "border-emerald-500/40 text-emerald-300/90"
-                                    : "border-amber-500/30 text-amber-200/80"
-                                }
-                                title="Reference exercises from the ingested library used to ground AI-generated quests"
-                              >
-                                Library: {goal.fitnessLibraryMatchCount > 0 ? `${goal.fitnessLibraryMatchCount} matches` : "no matches"}
-                              </Badge>
-                            )}
                           </div>
                         </div>
                       </div>

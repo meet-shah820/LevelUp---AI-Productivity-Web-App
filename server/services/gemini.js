@@ -487,6 +487,8 @@ Goal lock: user_profile.goal must paraphrase the PRIMARY TRAINING GOAL from the 
 
 When the user message includes REFERENCE_LIBRARY (exercise rows from this app database), prefer those exercise names, muscle categories, and equipment when they fit the stated goal; otherwise use standard safe gym movements. Daily quests are the user schedule — each must stay actionable and time-bounded.
 
+Difficulty spread: the app assigns Easy / Medium / Hard to quest templates in order (about the first quarter Easier, middle half Medium, last quarter Harder). Program earlier daily templates with lighter volume or simpler patterns where appropriate, and ramp specificity or volume toward the end of the daily_quests list so all three tiers feel distinct.
+
 For every workout[] row: fill "equipment" (e.g. barbell, cable stack, leg press, treadmill, bodyweight). Fill "form_cues" with execution detail. Fill "injury_prevention" with 1–2 short lines (racking, range, bracing, when to stop) — not medical claims.
 
 Missed tasks: recovery_logic must describe Recovery Quests (never shame), reduce volume 20-40%, restore consistency.
@@ -622,13 +624,13 @@ function capList(arr, max) {
 function sanitizeAndValidateFullPlan(raw, goalTitle, category, opts = {}) {
 	const fitnessMode = opts.fitnessMode === true;
 	const cat = category || "general";
-	const daily = capList(raw?.dailyQuests, 15)
+	const daily = capList(raw?.dailyQuests, 32)
 		.map((r) => sanitizeRichQuestRow(r, "daily"))
 		.filter((q) => q.title && q.instructions);
-	const weekly = capList(raw?.weeklyQuests, 12)
+	const weekly = capList(raw?.weeklyQuests, 22)
 		.map((r) => sanitizeRichQuestRow(r, "weekly"))
 		.filter((q) => q.title && q.instructions);
-	const monthly = capList(raw?.monthlyQuests, 8)
+	const monthly = capList(raw?.monthlyQuests, 14)
 		.map((r) => sanitizeRichQuestRow(r, "monthly"))
 		.filter((q) => q.title && q.instructions);
 
@@ -936,9 +938,10 @@ function fallbackRichTemplate(goalTitle, category) {
 
 function computeFitnessPlanCounts(months) {
 	const m = Math.max(1, Math.min(36, months));
-	const dailyTarget = Math.min(12, Math.max(3, Math.round(m * 1.6)));
-	const weeklyTarget = Math.min(10, Math.max(2, Math.ceil(m / 1.2)));
-	const monthlyTarget = Math.min(6, Math.max(2, Math.ceil(m / 3)));
+	/** Scales with program length; caps keep one Gemini response tractable. */
+	const dailyTarget = Math.min(28, Math.max(4, Math.round(m * 2.2)));
+	const weeklyTarget = Math.min(18, Math.max(3, Math.ceil(m / 0.9)));
+	const monthlyTarget = Math.min(12, Math.max(2, Math.ceil(m / 2.5)));
 	return { dailyTarget, weeklyTarget, monthlyTarget };
 }
 
@@ -1013,22 +1016,22 @@ function fitnessPlanSliceKey(section) {
 
 function fitnessPlanSectionNeedsRefill(section, errors, plan, counts) {
 	const err = Array.isArray(errors) ? errors : [];
-	const dt = Math.max(2, Math.min(15, counts.dailyTarget));
-	const wt = Math.max(2, Math.min(12, counts.weeklyTarget));
-	const mt = Math.max(1, Math.min(8, counts.monthlyTarget));
+	const dt = Math.max(3, Math.min(28, counts.dailyTarget));
+	const wt = Math.max(3, Math.min(18, counts.weeklyTarget));
+	const mt = Math.max(2, Math.min(12, counts.monthlyTarget));
 	const d = plan?.dailyQuests?.length || 0;
 	const w = plan?.weeklyQuests?.length || 0;
 	const m = plan?.monthlyQuests?.length || 0;
 
 	if (section === "daily") {
-		if (d < 2 || err.some((e) => String(e).includes("dailyQuests"))) return true;
-		if (d < Math.max(2, Math.ceil(dt * 0.65))) return true;
+		if (d < 3 || err.some((e) => String(e).includes("dailyQuests"))) return true;
+		if (d < Math.max(3, Math.ceil(dt * 0.65))) return true;
 		if (err.some((e) => /^daily\[/i.test(String(e)))) return true;
 		return false;
 	}
 	if (section === "weekly") {
-		if (w < 2 || err.some((e) => String(e).includes("weeklyQuests"))) return true;
-		if (w < Math.max(2, Math.ceil(wt * 0.65))) return true;
+		if (w < 3 || err.some((e) => String(e).includes("weeklyQuests"))) return true;
+		if (w < Math.max(3, Math.ceil(wt * 0.65))) return true;
 		if (err.some((e) => /^weekly\[/i.test(String(e)))) return true;
 		return false;
 	}
@@ -1054,9 +1057,9 @@ function fitnessSectionsToRefill(errors, plan, counts) {
 }
 
 function sliceCountForSection(section, counts) {
-	if (section === "daily") return Math.max(2, Math.min(15, counts.dailyTarget));
-	if (section === "weekly") return Math.max(2, Math.min(12, counts.weeklyTarget));
-	return Math.max(1, Math.min(8, counts.monthlyTarget));
+	if (section === "daily") return Math.max(3, Math.min(28, counts.dailyTarget));
+	if (section === "weekly") return Math.max(3, Math.min(18, counts.weeklyTarget));
+	return Math.max(2, Math.min(12, counts.monthlyTarget));
 }
 
 function buildFitnessSliceUserMessage({

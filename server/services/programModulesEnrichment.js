@@ -3,7 +3,9 @@ import Goal from "../models/Goal.js";
 import { findRelevantFitnessLibrary } from "./fitnessLibraryQuery.js";
 
 const WGER_BASE = "https://wger.de/api/v2";
-const CACHE_VERSION = 1;
+
+/** Bump when merge logic changes — triggers refresh on GET program-modules */
+export const PROGRAM_MODULES_CACHE_VERSION = 3;
 
 function stripHtml(html) {
 	return String(html || "")
@@ -156,6 +158,78 @@ async function fetchWgerExerciseHint(exerciseName, opts = {}) {
 }
 
 /**
+ * @param {{ name: string, equipment: string, form_cues: string, injury_prevention: string }} row
+ * @param {{ fetchImpl?: typeof fetch }} opts
+ */
+async function movementDetailFromExtractedRow(row, opts) {
+	const lib = await findLibraryRowByExerciseName(row.name);
+	const live =
+		!lib || String(lib.description || "").trim().length < 120
+			? await fetchWgerExerciseHint(row.name, opts)
+			: null;
+	const description = [lib && String(lib.description || "").trim(), live && String(live.description || "").trim()]
+		.filter(Boolean)
+		.join("\n\n")
+		.slice(0, 14000);
+	const equipmentLabels = lib?.equipmentLabels && Array.isArray(lib.equipmentLabels) ? lib.equipmentLabels : [];
+	const equipmentSummary = [row.equipment, equipmentLabels.join(", ").trim()].filter(Boolean).join(" · ").slice(0, 500);
+
+	return {
+		name: row.name,
+		equipmentSummary,
+		equipmentLabels,
+		description,
+		form_cues: row.form_cues,
+		injury_prevention: row.injury_prevention,
+		referenceSource: lib?.source || live?.source || null,
+		referenceUrl: lib?.sourceUrl || live?.sourceUrl || null,
+		licenseShort: lib?.licenseShort || live?.licenseShort || null,
+		categoryLabel: lib?.categoryLabel || live?.categoryLabel || "",
+		fromProgramSnapshot: true,
+	};
+}
+
+function mergeMovementMaps(snapshotRows, fallbackRows) {
+	/** @type {Map<string, Record<string, unknown>>} */
+	const map = new Map();
+	for (const m of fallbackRows) {
+		const k = normalizeKey(m.name);
+		map.set(k, { ...m });
+	}
+	for (const m of snapshotRows) {
+		const k = normalizeKey(m.name);
+		const prev = map.get(k);
+		if (!prev) {
+			map.set(k, { ...m });
+			continue;
+		}
+		const desc = [String(m.description || "").trim(), String(prev.description || "").trim()]
+			.filter(Boolean)
+			.join("\n\n")
+			.slice(0, 14000);
+		map.set(k, {
+			...prev,
+			...m,
+			description: desc,
+			form_cues: String(m.form_cues || "").trim() || String(prev.form_cues || "").trim(),
+			injury_prevention: String(m.injury_prevention || "").trim() || String(prev.injury_prevention || "").trim(),
+			equipmentLabels:
+				Array.isArray(m.equipmentLabels) && m.equipmentLabels.length > 0
+					? m.equipmentLabels
+					: prev.equipmentLabels || [],
+			equipmentSummary: String(m.equipmentSummary || "").trim() || String(prev.equipmentSummary || "").trim(),
+			referenceSource: m.referenceSource || prev.referenceSource,
+			referenceUrl: m.referenceUrl || prev.referenceUrl,
+			licenseShort: m.licenseShort || prev.licenseShort,
+			categoryLabel: String(m.categoryLabel || "").trim() || String(prev.categoryLabel || "").trim(),
+			fromProgramSnapshot: true,
+			fromGoalContextFallback: !!(prev.fromGoalContextFallback && !m.fromProgramSnapshot),
+		});
+	}
+	return [...map.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/**
  * @param {import("mongoose").Types.ObjectId|string} goalId
  * @param {{ fetchImpl?: typeof fetch }} [opts]
  */
@@ -165,48 +239,35 @@ export async function enrichAndPersistGoalProgramModules(goalId, opts = {}) {
 	const snap = goal.fitnessPlanSnapshot && typeof goal.fitnessPlanSnapshot === "object" ? goal.fitnessPlanSnapshot : null;
 	const extracted = extractWorkoutRowsFromSnapshot(snap);
 
-	let movements = [];
-	let source = "snapshot";
-
+	/** @type {Array<Record<string, unknown>>} */
+	let snapshotEnriched = [];
 	if (extracted.length > 0) {
 		for (const row of extracted) {
-			const lib = await findLibraryRowByExerciseName(row.name);
-			const live = !lib || !String(lib.description || "").trim() ? await fetchWgerExerciseHint(row.name, opts) : null;
-			const description = [
-				lib && String(lib.description || "").trim(),
-				live && String(live.description || "").trim(),
-			]
-				.filter(Boolean)
-				.join("\n\n")
-				.slice(0, 12000);
-			const equipmentLabels = lib?.equipmentLabels && Array.isArray(lib.equipmentLabels) ? lib.equipmentLabels : [];
-			const equipmentSummary = [row.equipment, equipmentLabels.join(", ").trim()].filter(Boolean).join(" · ").slice(0, 500);
-
-			movements.push({
-				name: row.name,
-				equipmentSummary,
-				equipmentLabels,
-				description,
-				form_cues: row.form_cues,
-				injury_prevention: row.injury_prevention,
-				referenceSource: lib?.source || live?.source || null,
-				referenceUrl: lib?.sourceUrl || live?.sourceUrl || null,
-				licenseShort: lib?.licenseShort || live?.licenseShort || null,
-				categoryLabel: lib?.categoryLabel || live?.categoryLabel || "",
-			});
+			// eslint-disable-next-line no-await-in-loop
+			snapshotEnriched.push(await movementDetailFromExtractedRow(row, opts));
 		}
-	} else {
-		source = "goal_library_fallback";
-		const rows = await findRelevantFitnessLibrary({
-			goalTitle: goal.title,
-			description: goal.description || "",
-			limit: 28,
-		});
-		movements = rows.map((r) => ({
+	}
+
+	const fallbackLib = await findRelevantFitnessLibrary({
+		goalTitle: goal.title,
+		description: goal.description || "",
+		limit: 52,
+	});
+	const fallbackRows = [];
+	for (const r of fallbackLib) {
+		let description = String(r.description || "").trim();
+		if (description.length < 180) {
+			// eslint-disable-next-line no-await-in-loop
+			const live = await fetchWgerExerciseHint(r.name, opts);
+			if (live?.description) {
+				description = [description, live.description].filter(Boolean).join("\n\n").slice(0, 14000);
+			}
+		}
+		fallbackRows.push({
 			name: r.name,
 			equipmentSummary: (r.equipmentLabels || []).join(", "),
 			equipmentLabels: r.equipmentLabels || [],
-			description: String(r.description || "").slice(0, 12000),
+			description,
 			form_cues: "",
 			injury_prevention: "",
 			referenceSource: r.source,
@@ -214,11 +275,20 @@ export async function enrichAndPersistGoalProgramModules(goalId, opts = {}) {
 			licenseShort: r.licenseShort,
 			categoryLabel: r.categoryLabel || "",
 			fromGoalContextFallback: true,
-		}));
+		});
+	}
+
+	let movements = mergeMovementMaps(snapshotEnriched, fallbackRows);
+	let source = "merged_snapshot_library";
+	if (snapshotEnriched.length === 0 && movements.length > 0) {
+		source = "goal_library_fallback";
+	}
+	if (movements.length === 0 && fallbackRows.length === 0 && snapshotEnriched.length === 0) {
+		source = "empty";
 	}
 
 	const cache = {
-		version: CACHE_VERSION,
+		version: PROGRAM_MODULES_CACHE_VERSION,
 		updatedAt: new Date().toISOString(),
 		source,
 		movements,

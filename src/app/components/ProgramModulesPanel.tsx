@@ -58,6 +58,65 @@ type Props = {
 	highlightGoalId?: string;
 };
 
+function EnrichedMovementBlock({ mv }: { mv: ProgramModulesMovement }) {
+	return (
+		<li className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2 text-sm">
+			<div className="flex flex-wrap items-baseline gap-2">
+				<span className="font-medium text-white">{mv.name}</span>
+				{mv.categoryLabel ? (
+					<Badge variant="outline" className="border-slate-500/35 text-slate-200/90 text-[11px]">
+						{mv.categoryLabel}
+					</Badge>
+				) : null}
+			</div>
+			{mv.equipmentLabels && mv.equipmentLabels.length > 0 ? (
+				<div className="flex flex-wrap gap-1.5">
+					{mv.equipmentLabels.map((eq) => (
+						<Badge key={`${mv.name}-${eq}`} variant="outline" className="border-violet-500/35 text-violet-200/90 text-[11px]">
+							{eq}
+						</Badge>
+					))}
+				</div>
+			) : mv.equipmentSummary ? (
+				<Badge variant="outline" className="border-violet-500/35 text-violet-200/90 text-[11px] w-fit">
+					{mv.equipmentSummary}
+				</Badge>
+			) : null}
+			{mv.description ? (
+				<div>
+					<p className="text-[11px] uppercase text-gray-500 font-medium">Overview</p>
+					<p className="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm">{mv.description}</p>
+				</div>
+			) : null}
+			{mv.form_cues ? (
+				<div>
+					<p className="text-[11px] uppercase text-gray-500 font-medium">Form & execution</p>
+					<p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{mv.form_cues}</p>
+				</div>
+			) : null}
+			{mv.injury_prevention ? (
+				<div>
+					<p className="text-[11px] uppercase text-gray-500 font-medium">Safety / injury prevention</p>
+					<p className="text-gray-400 leading-relaxed whitespace-pre-wrap">{mv.injury_prevention}</p>
+				</div>
+			) : null}
+			{mv.referenceUrl ? (
+				<p className="text-[11px] pt-1">
+					<a
+						href={mv.referenceUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+					>
+						Reference{mv.referenceSource ? ` (${mv.referenceSource})` : ""}
+					</a>
+					{mv.licenseShort ? <span className="text-gray-600"> · {mv.licenseShort}</span> : null}
+				</p>
+			) : null}
+		</li>
+	);
+}
+
 /**
  * Program reference: goal-scoped schedule copy + equipment / movement library from stored AI program.
  * Does not list app quest instances.
@@ -82,6 +141,9 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 					const useEnriched =
 						Array.isArray(cache?.movements) && (cache?.movements?.length ?? 0) > 0;
 					const enrichedList: ProgramModulesMovement[] = useEnriched ? (cache?.movements ?? []) : [];
+					const rotationList: ProgramModulesMovement[] = Array.isArray(m.currentRotationMovements)
+						? m.currentRotationMovements
+						: [];
 					const snapshotOnlyMovements = !useEnriched ? collectMovements(snap) : [];
 					const isHi = highlightGoalId && m.goalId === highlightGoalId;
 					const daily = Array.isArray(snap?.daily_quests) ? (snap?.daily_quests as unknown[]) : [];
@@ -171,7 +233,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									<div className="space-y-2">
 										<p className="text-xs text-blue-300/90 font-medium">Daily session themes</p>
 										<ul className="space-y-1.5 text-sm text-gray-300">
-											{daily.slice(0, 14).map((row, i) => {
+											{daily.map((row, i) => {
 												const r = row as Record<string, unknown>;
 												const day = Number(r.day) || i + 1;
 												const tit = String(r.title || "").trim();
@@ -182,11 +244,6 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 													</li>
 												);
 											})}
-											{daily.length > 14 ? (
-												<li className="text-xs text-gray-500 italic pt-1">
-													+ {daily.length - 14} more sessions in your generated plan template.
-												</li>
-											) : null}
 										</ul>
 									</div>
 								) : null}
@@ -203,7 +260,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 								) : null}
 							</div>
 
-							<div className="border-t border-white/10 pt-4 space-y-3">
+							<div className="border-t border-white/10 pt-4 space-y-5">
 								<div className="flex flex-wrap items-center justify-between gap-2">
 									<div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
 										<Dumbbell className="w-4 h-4 text-violet-300" aria-hidden />
@@ -221,74 +278,52 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 										When the AI program includes daily workout rows, this section merges those names with library + open reference data and saves everything on this goal.
 									</p>
 								) : null}
+
+								<div className="space-y-2">
+									<p className="text-[11px] font-semibold uppercase tracking-wide text-teal-400/90">
+										Current rotation (today + rolling week & month)
+									</p>
+									<p className="text-xs text-gray-500 leading-relaxed">
+										Equipment and movements for quests active right now: today&apos;s dailies plus the current rolling weekly and monthly windows.
+									</p>
+									{useEnriched && rotationList.length > 0 ? (
+										<ul className="space-y-4">
+											{rotationList.map((mv) => (
+												<EnrichedMovementBlock key={`rot-${m.goalId}-${mv.name}`} mv={mv} />
+											))}
+										</ul>
+									) : useEnriched && enrichedList.length > 0 ? (
+										<p className="text-sm text-gray-500 italic leading-relaxed">
+											No movements matched the current quest window against stored program names yet (reload after quests sync, or open Program modules again to re-merge). See the full program below for every exercise in this goal.
+										</p>
+									) : !useEnriched && snapshotOnlyMovements.length > 0 ? (
+										<p className="text-sm text-gray-500 italic leading-relaxed">
+											Detailed rotation filtering applies after the server saves enriched movements. Snapshot-only rows are listed under the full program below.
+										</p>
+									) : null}
+								</div>
+
+								<div className="space-y-2 pt-1 border-t border-white/5">
+									<p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">
+										Full program (entire goal)
+									</p>
+									<p className="text-xs text-gray-500 leading-relaxed">
+										Everything used across this program: all merged exercises, machines, and activities for the full goal horizon (not only this week).
+									</p>
+								</div>
+
 								{useEnriched ? (
-									<ul className="space-y-4">
-										{enrichedList.map((mv) => (
-											<li
-												key={`${m.goalId}-${mv.name}`}
-												className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2 text-sm"
-											>
-												<div className="flex flex-wrap items-baseline gap-2">
-													<span className="font-medium text-white">{mv.name}</span>
-													{mv.categoryLabel ? (
-														<Badge variant="outline" className="border-slate-500/35 text-slate-200/90 text-[11px]">
-															{mv.categoryLabel}
-														</Badge>
-													) : null}
-												</div>
-												{mv.equipmentLabels && mv.equipmentLabels.length > 0 ? (
-													<div className="flex flex-wrap gap-1.5">
-														{mv.equipmentLabels.map((eq) => (
-															<Badge
-																key={`${mv.name}-${eq}`}
-																variant="outline"
-																className="border-violet-500/35 text-violet-200/90 text-[11px]"
-															>
-																{eq}
-															</Badge>
-														))}
-													</div>
-												) : mv.equipmentSummary ? (
-													<Badge variant="outline" className="border-violet-500/35 text-violet-200/90 text-[11px] w-fit">
-														{mv.equipmentSummary}
-													</Badge>
-												) : null}
-												{mv.description ? (
-													<div>
-														<p className="text-[11px] uppercase text-gray-500 font-medium">Overview</p>
-														<p className="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm">{mv.description}</p>
-													</div>
-												) : null}
-												{mv.form_cues ? (
-													<div>
-														<p className="text-[11px] uppercase text-gray-500 font-medium">Form & execution</p>
-														<p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{mv.form_cues}</p>
-													</div>
-												) : null}
-												{mv.injury_prevention ? (
-													<div>
-														<p className="text-[11px] uppercase text-gray-500 font-medium">Safety / injury prevention</p>
-														<p className="text-gray-400 leading-relaxed whitespace-pre-wrap">{mv.injury_prevention}</p>
-													</div>
-												) : null}
-												{mv.referenceUrl ? (
-													<p className="text-[11px] pt-1">
-														<a
-															href={mv.referenceUrl}
-															target="_blank"
-															rel="noopener noreferrer"
-															className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
-														>
-															Reference{mv.referenceSource ? ` (${mv.referenceSource})` : ""}
-														</a>
-														{mv.licenseShort ? (
-															<span className="text-gray-600"> · {mv.licenseShort}</span>
-														) : null}
-													</p>
-												) : null}
-											</li>
-										))}
-									</ul>
+									enrichedList.length > 0 ? (
+										<ul className="space-y-4">
+											{enrichedList.map((mv) => (
+												<EnrichedMovementBlock key={`full-${m.goalId}-${mv.name}`} mv={mv} />
+											))}
+										</ul>
+									) : (
+										<p className="text-sm text-gray-500 leading-relaxed">
+											No merged exercises on this goal yet. Save the goal again or open this panel once the server has finished merging your program with the reference library.
+										</p>
+									)
 								) : snapshotOnlyMovements.length > 0 ? (
 									<ul className="space-y-4">
 										{snapshotOnlyMovements.map((mv) => (

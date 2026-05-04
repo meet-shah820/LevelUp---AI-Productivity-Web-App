@@ -16,7 +16,11 @@ import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
 import { findRelevantFitnessLibrary } from "../services/fitnessLibraryQuery.js";
-import { enrichAndPersistGoalProgramModules } from "../services/programModulesEnrichment.js";
+import {
+	enrichAndPersistGoalProgramModules,
+	PROGRAM_MODULES_CACHE_VERSION,
+} from "../services/programModulesEnrichment.js";
+import { computeCurrentRotationMovementRows } from "../services/programModulesRotation.js";
 
 const router = express.Router();
 
@@ -40,19 +44,19 @@ function parseOptionalDate(raw) {
 	return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Cap total inserted rows so one goal cannot explode the DB. */
+/** Seed rolling instances — scales with deadline; soft caps keep Mongo inserts bounded. */
 function computeSeedWindows(months, dailyTemplateCount, weeklyTemplateCount, monthlyTemplateCount) {
 	const m = Math.max(1, Math.min(36, months));
-	let daysToSeed = Math.min(45, Math.max(7, Math.round(m * 1.2)));
-	let weeksToSeed = Math.min(16, Math.max(4, Math.ceil(m / 1.5)));
+	let daysToSeed = Math.min(120, Math.max(14, Math.round(m * 4)));
+	let weeksToSeed = Math.min(52, Math.max(6, Math.ceil(m * 1.25)));
 	let monthsToSeed =
-		monthlyTemplateCount > 0 ? Math.min(8, Math.max(2, Math.ceil(m / 4))) : 0;
+		monthlyTemplateCount > 0 ? Math.min(18, Math.max(3, Math.ceil(m / 3))) : 0;
 	const dc = Math.max(1, dailyTemplateCount);
 	const wc = Math.max(1, weeklyTemplateCount);
 	const mc = Math.max(1, monthlyTemplateCount);
-	while (daysToSeed > 7 && daysToSeed * dc > 120) daysToSeed -= 1;
-	while (weeksToSeed > 4 && weeksToSeed * wc > 56) weeksToSeed -= 1;
-	while (monthsToSeed > 2 && monthsToSeed * mc > 24) monthsToSeed -= 1;
+	while (daysToSeed > 14 && daysToSeed * dc > 520) daysToSeed -= 1;
+	while (weeksToSeed > 6 && weeksToSeed * wc > 220) weeksToSeed -= 1;
+	while (monthsToSeed > 3 && monthsToSeed * mc > 48) monthsToSeed -= 1;
 	return { daysToSeed, weeksToSeed, monthsToSeed };
 }
 
@@ -109,7 +113,12 @@ router.get("/program-modules", async (req, res) => {
 			.sort({ createdAt: 1 })
 			.lean();
 		for (const g of goals) {
-			if (!g.programModulesCache?.movements?.length) {
+			const ver = g.programModulesCache?.version ?? 0;
+			const needs =
+				!Array.isArray(g.programModulesCache?.movements) ||
+				g.programModulesCache.movements.length === 0 ||
+				ver < PROGRAM_MODULES_CACHE_VERSION;
+			if (needs) {
 				try {
 					await enrichAndPersistGoalProgramModules(g._id);
 					const fresh = await Goal.findById(g._id).select("programModulesCache").lean();
@@ -120,17 +129,37 @@ router.get("/program-modules", async (req, res) => {
 				}
 			}
 		}
-		const modules = goals.map((g) => ({
-			goalId: String(g._id),
-			title: g.title,
-			description: String(g.description || "").trim().slice(0, 1200),
-			deadline: g.deadline ? new Date(g.deadline).toISOString() : null,
-			createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
-			fitnessPlanSnapshot:
-				g.fitnessPlanSnapshot && typeof g.fitnessPlanSnapshot === "object" ? g.fitnessPlanSnapshot : null,
-			programModulesCache:
-				g.programModulesCache && typeof g.programModulesCache === "object" ? g.programModulesCache : null,
-		}));
+		const modules = await Promise.all(
+			goals.map(async (g) => {
+				const cache =
+					g.programModulesCache && typeof g.programModulesCache === "object" ? g.programModulesCache : null;
+				const fullMovements = Array.isArray(cache?.movements) ? cache.movements : [];
+				const snap =
+					g.fitnessPlanSnapshot && typeof g.fitnessPlanSnapshot === "object" ? g.fitnessPlanSnapshot : null;
+				let currentRotationMovements = [];
+				try {
+					currentRotationMovements = await computeCurrentRotationMovementRows(
+						user._id,
+						g._id,
+						snap,
+						fullMovements
+					);
+				} catch (rot) {
+					// eslint-disable-next-line no-console
+					console.warn("[goals] current rotation movements:", rot?.message || rot);
+				}
+				return {
+					goalId: String(g._id),
+					title: g.title,
+					description: String(g.description || "").trim().slice(0, 1200),
+					deadline: g.deadline ? new Date(g.deadline).toISOString() : null,
+					createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
+					fitnessPlanSnapshot: snap,
+					programModulesCache: cache,
+					currentRotationMovements,
+				};
+			})
+		);
 		return res.json({ modules });
 	} catch (e) {
 		// eslint-disable-next-line no-console

@@ -27,6 +27,19 @@ function inferStatFromMovement(name) {
 	return "str";
 }
 
+/** Spread easy → medium → hard across the full template list (scales with horizon). */
+function difficultyTierForIndex(indexInArray, tierTotal) {
+	const t = Math.max(1, Math.floor(Number(tierTotal) || 1));
+	const i = Math.max(0, Number(indexInArray) || 0);
+	if (t <= 2) return i === 0 ? "easy" : "hard";
+	if (t === 3) return ["easy", "medium", "hard"][i] || "medium";
+	const easyCut = Math.max(1, Math.ceil(t * 0.25));
+	const hardStart = Math.min(t - 1, Math.floor(t * 0.72));
+	if (i < easyCut) return "easy";
+	if (i >= hardStart) return "hard";
+	return "medium";
+}
+
 function formatWorkoutLines(workout) {
 	if (!Array.isArray(workout) || workout.length === 0) return "";
 	return workout
@@ -47,7 +60,7 @@ function formatWorkoutLines(workout) {
 		.join("\n");
 }
 
-function mapDaily(dq, goalTitle, indexInArray = 0) {
+function mapDaily(dq, goalTitle, indexInArray = 0, tierTotal = 12) {
 	const day = Number(dq?.day) || indexInArray + 1;
 	const titleRaw = String(dq?.title || "").trim();
 	const title =
@@ -71,8 +84,7 @@ function mapDaily(dq, goalTitle, indexInArray = 0) {
 	const firstName = Array.isArray(dq?.workout) && dq.workout[0]?.name ? String(dq.workout[0].name) : title;
 	const statType = inferStatFromMovement(firstName);
 
-	/** First sessions Easy, then Medium, then Hard — stable by template order (not AI day numbers). */
-	const difficulty = indexInArray < 2 ? "easy" : indexInArray < 6 ? "medium" : "hard";
+	const difficulty = difficultyTierForIndex(indexInArray, tierTotal);
 
 	return {
 		title,
@@ -84,7 +96,7 @@ function mapDaily(dq, goalTitle, indexInArray = 0) {
 	};
 }
 
-function mapWeekly(wq, idx) {
+function mapWeekly(wq, idx, tierTotal = 8) {
 	const week = Number(wq?.week) || idx + 1;
 	const objective = String(wq?.objective || "").trim();
 	const success = String(wq?.success_criteria || wq?.successCriteria || "").trim();
@@ -104,11 +116,11 @@ function mapWeekly(wq, idx) {
 				: success || `Success criterion: Week ${week} criteria logged with numbers (sessions, load, or time).`,
 		statType: week % 4 === 0 ? "vit" : week % 3 === 0 ? "agi" : "str",
 		xp: 200 + week * 15,
-		difficulty: idx < 1 ? "easy" : idx < 4 ? "medium" : "hard",
+		difficulty: difficultyTierForIndex(idx, tierTotal),
 	};
 }
 
-function mapMonthly(mq, idx) {
+function mapMonthly(mq, idx, tierTotal = 6) {
 	const month = Number(mq?.month) || idx + 1;
 	const goal = String(mq?.goal || "").trim();
 	const targets = String(mq?.progress_targets || mq?.progressTargets || "").trim();
@@ -130,7 +142,7 @@ function mapMonthly(mq, idx) {
 					: `Success criterion: Month ${month} milestone documented with test numbers and training log.`,
 		statType: month % 2 === 0 ? "str" : "agi",
 		xp: 400 + month * 40,
-		difficulty: idx < 1 ? "easy" : idx < 3 ? "medium" : "hard",
+		difficulty: difficultyTierForIndex(idx, tierTotal),
 	};
 }
 
@@ -150,13 +162,19 @@ export function mapFitnessAiJsonToPlan(raw, goalTitle, counts) {
 	const weeklySrc = Array.isArray(raw?.weekly_quests) ? raw.weekly_quests : Array.isArray(raw?.weeklyQuests) ? raw.weeklyQuests : [];
 	const monthlySrc = Array.isArray(raw?.monthly_quests) ? raw.monthly_quests : Array.isArray(raw?.monthlyQuests) ? raw.monthlyQuests : [];
 
-	let dailyQuests = dailySrc.map((d, i) => mapDaily(d, goalTitle, i)).filter((q) => q.title && q.instructions.length >= 40);
-	let weeklyQuests = weeklySrc.map((w, i) => mapWeekly(w, i)).filter((q) => q.title && q.instructions.length >= 40);
-	let monthlyQuests = monthlySrc.map((m, i) => mapMonthly(m, i)).filter((q) => q.title && q.instructions.length >= 40);
+	const dt = Math.max(3, Math.min(28, counts.dailyTarget));
+	const wt = Math.max(3, Math.min(18, counts.weeklyTarget));
+	const mt = Math.max(2, Math.min(12, counts.monthlyTarget));
 
-	const dt = Math.max(2, Math.min(15, counts.dailyTarget));
-	const wt = Math.max(2, Math.min(12, counts.weeklyTarget));
-	const mt = Math.max(1, Math.min(8, counts.monthlyTarget));
+	let dailyQuests = dailySrc
+		.map((d, i) => mapDaily(d, goalTitle, i, dt))
+		.filter((q) => q.title && q.instructions.length >= 40);
+	let weeklyQuests = weeklySrc
+		.map((w, i) => mapWeekly(w, i, wt))
+		.filter((q) => q.title && q.instructions.length >= 40);
+	let monthlyQuests = monthlySrc
+		.map((m, i) => mapMonthly(m, i, mt))
+		.filter((q) => q.title && q.instructions.length >= 40);
 
 	if (dailyQuests.length > dt) dailyQuests = dailyQuests.slice(0, dt);
 	if (weeklyQuests.length > wt) weeklyQuests = weeklyQuests.slice(0, wt);
@@ -207,9 +225,9 @@ export function mapFitnessAiJsonToPlan(raw, goalTitle, counts) {
 		},
 		recovery_logic: recovery || undefined,
 		/** Raw AI program for Program modules UI (equipment + schedule copy). */
-		daily_quests: capArr(dailySrc, 45),
-		weekly_quests: capArr(weeklySrc, 14),
-		monthly_quests: capArr(monthlySrc, 10),
+		daily_quests: capArr(dailySrc, 60),
+		weekly_quests: capArr(weeklySrc, 24),
+		monthly_quests: capArr(monthlySrc, 14),
 	};
 
 	return { plan, fitnessSnapshot };
