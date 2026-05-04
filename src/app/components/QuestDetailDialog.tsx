@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { CircleCheck, Loader2, ListChecks, Sparkles, Target, TrendingUp, Zap } from "lucide-react";
+import {
+  CircleCheck,
+  Loader2,
+  ListChecks,
+  ListTodo,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +17,13 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Badge } from "./ui/badge";
-import { getQuestDetails, type QuestDetailsPayload } from "../utils/api";
+import { Checkbox } from "./ui/checkbox";
+import {
+  getQuestDetails,
+  patchQuestExerciseCheck,
+  type QuestDetailsPayload,
+  type QuestExerciseItem,
+} from "../utils/api";
 import { formatQuestTitleForDisplay } from "../utils/questDisplay";
 
 type Props = {
@@ -36,6 +51,8 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
   const [data, setData] = useState<QuestDetailsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exerciseRows, setExerciseRows] = useState<QuestExerciseItem[]>([]);
+  const [exerciseSavingKey, setExerciseSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !questId) {
@@ -60,6 +77,14 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
     };
   }, [open, questId]);
 
+  useEffect(() => {
+    if (data?.exercises && Array.isArray(data.exercises)) {
+      setExerciseRows(data.exercises);
+    } else {
+      setExerciseRows([]);
+    }
+  }, [data]);
+
   const d = data?.details;
   const q = data?.quest;
   const g = data?.goal;
@@ -69,6 +94,22 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
       ? formatQuestTitleForDisplay(q.title, g?.title)
       : "Quest";
   const difficultyLabel = q ? difficultyBadgeLabel(q.difficulty) : null;
+
+  const doneExerciseCount = exerciseRows.filter((r) => r.completed).length;
+  const exerciseTotal = exerciseRows.length;
+
+  const handleExerciseToggle = async (key: string, checked: boolean) => {
+    if (!questId || !q || q.isCompleted) return;
+    setExerciseSavingKey(key);
+    try {
+      const { exercises } = await patchQuestExerciseCheck(questId, key, checked);
+      setExerciseRows(exercises);
+    } catch {
+      /* keep prior state */
+    } finally {
+      setExerciseSavingKey(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -144,6 +185,53 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
             )}
             {!loading && !error && d && (
               <>
+                {exerciseTotal > 0 && (
+                  <section className="rounded-xl border border-teal-500/25 bg-teal-950/40 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-teal-300 flex items-center gap-2">
+                        <ListTodo className="w-4 h-4 shrink-0" />
+                        Exercises & tasks
+                      </h4>
+                      <span className="text-[11px] tabular-nums text-teal-200/90 font-medium">
+                        {doneExerciseCount}/{exerciseTotal} done
+                      </span>
+                    </div>
+                    <ul className="space-y-3">
+                      {exerciseRows.map((ex) => {
+                        const busy = exerciseSavingKey === ex.key;
+                        const locked = !!(q?.isCompleted);
+                        const fieldId = `qe-${ex.key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+                        return (
+                          <li
+                            key={ex.key}
+                            className="flex gap-3 items-start rounded-lg border border-white/10 bg-black/20 p-3 text-left"
+                          >
+                            <Checkbox
+                              id={fieldId}
+                              checked={ex.completed}
+                              disabled={locked || busy}
+                              onCheckedChange={(c) => void handleExerciseToggle(ex.key, c === true)}
+                              className="mt-0.5 border-teal-500/40 data-[state=checked]:bg-teal-600 data-[state=checked]:border-teal-500"
+                              aria-label={`Mark ${ex.label} ${ex.completed ? "not done" : "done"}`}
+                            />
+                            <label
+                              htmlFor={fieldId}
+                              className={`flex-1 min-w-0 space-y-1 ${locked ? "cursor-default" : "cursor-pointer"}`}
+                            >
+                              <span className="text-sm font-medium text-gray-100 leading-snug block">{ex.label}</span>
+                              {ex.meta ? (
+                                <span className="text-xs text-gray-500 leading-relaxed block">{ex.meta}</span>
+                              ) : null}
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {q?.isCompleted ? (
+                      <p className="text-[11px] text-gray-500">Quest completed — checklist is view only.</p>
+                    ) : null}
+                  </section>
+                )}
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-400 mb-2">
                     Mission summary

@@ -47,6 +47,17 @@ const QuestSchema = new mongoose.Schema(
 		briefingGeneratedAt: { type: Date, default: null },
 		/** Bump in code when briefing format/prompt changes so old cache is regenerated. */
 		briefingSchemaVersion: { type: Number, default: 0 },
+		/** Per-exercise / per-step checklist progress (fitness workouts or briefing steps). */
+		exerciseProgress: {
+			type: [
+				{
+					key: { type: String, required: true },
+					completed: { type: Boolean, default: false },
+					completedAt: { type: Date, default: null },
+				},
+			],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );

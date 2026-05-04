@@ -20,7 +20,7 @@ function normalizeKey(name) {
  * @param {Record<string, unknown>|null} snap
  * @param {string} questTitle
  */
-function workoutsForQuestTitleFromSnapshot(snap, questTitle) {
+export function workoutsForQuestTitleFromSnapshot(snap, questTitle) {
 	const qt = String(questTitle || "").toLowerCase().trim();
 	if (!qt || !snap || typeof snap !== "object") return [];
 	const out = [];
@@ -48,7 +48,7 @@ function workoutsForQuestTitleFromSnapshot(snap, questTitle) {
 /**
  * Match "Day 3 …" / "day 3" in the quest title to snapshot `day` or list index.
  */
-function workoutsForDayNumberFromSnapshot(snap, questTitle) {
+export function workoutsForDayNumberFromSnapshot(snap, questTitle) {
 	const m = String(questTitle || "").match(/\b[Dd]ay\s+(\d{1,2})\b/);
 	if (!m) return [];
 	const n = parseInt(m[1], 10);
@@ -60,6 +60,46 @@ function workoutsForDayNumberFromSnapshot(snap, questTitle) {
 	if (!row || typeof row !== "object") return [];
 	const wo = row.workout;
 	return Array.isArray(wo) ? [...wo] : [];
+}
+
+/**
+ * Structured workout rows from the stored AI program for this quest (daily / weekly / month indices).
+ * @param {Record<string, unknown>|null|undefined} snap — goal.fitnessPlanSnapshot
+ * @param {string} questTitle
+ * @param {string} [questType] — daily | weekly | monthly
+ */
+export function getWorkoutRowsForQuestFromSnapshot(snap, questTitle, questType = "daily") {
+	if (!snap || typeof snap !== "object") return [];
+	let ws = workoutsForQuestTitleFromSnapshot(snap, questTitle);
+	if (!ws.length) ws = workoutsForDayNumberFromSnapshot(snap, questTitle);
+
+	const t = String(questType || "daily").toLowerCase();
+	if (!ws.length && t === "weekly") {
+		const m = String(questTitle || "").match(/\b[Ww]eek\s+(\d{1,2})\b/);
+		const arr = snap.weekly_quests;
+		if (m && Array.isArray(arr)) {
+			const n = parseInt(m[1], 10);
+			const row = arr.find((x) => x && typeof x === "object" && Number(x.week) === n) || arr[n - 1];
+			if (row && typeof row === "object") {
+				const wo = row.workout;
+				if (Array.isArray(wo)) ws = [...wo];
+			}
+		}
+	}
+	if (!ws.length && t === "monthly") {
+		const m = String(questTitle || "").match(/\b[Mm]onth\s+(\d{1,2})\b/);
+		const arr = snap.monthly_quests;
+		if (m && Array.isArray(arr)) {
+			const n = parseInt(m[1], 10);
+			const row = arr.find((x) => x && typeof x === "object" && Number(x.month) === n) || arr[n - 1];
+			if (row && typeof row === "object") {
+				const wo = row.workout;
+				if (Array.isArray(wo)) ws = [...wo];
+			}
+		}
+	}
+
+	return ws.filter((x) => x && typeof x === "object");
 }
 
 /**

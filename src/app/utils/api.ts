@@ -300,6 +300,14 @@ export async function getQuests(timeframe: "daily" | "weekly" | "monthly", diffi
 	return res.json();
 }
 
+export type QuestExerciseItem = {
+	key: string;
+	label: string;
+	meta: string | null;
+	completed: boolean;
+	completedAt: string | null;
+};
+
 export type QuestDetailsPayload = {
 	quest: {
 		id: string;
@@ -312,6 +320,8 @@ export type QuestDetailsPayload = {
 		/** easy | medium | hard */
 		difficulty?: string;
 	};
+	/** Workout rows from program snapshot or briefing steps; persisted checkbox state per key. */
+	exercises?: QuestExerciseItem[];
 	isPenaltyActive?: boolean;
 	originalTitle?: string;
 	goal: { id: string; title: string; category: string } | null;
@@ -335,6 +345,21 @@ export async function getQuestDetails(questId: string): Promise<QuestDetailsPayl
 	const body = await res.json().catch(() => ({}));
 	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to load quest details");
 	return body as QuestDetailsPayload;
+}
+
+export async function patchQuestExerciseCheck(
+	questId: string,
+	key: string,
+	completed: boolean
+): Promise<{ exercises: QuestExerciseItem[] }> {
+	const res = await apiFetch(`/api/quests/${encodeURIComponent(questId)}/exercise-check`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ key, completed }),
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to update checklist");
+	return body as { exercises: QuestExerciseItem[] };
 }
 
 export async function getRecentHistory() {

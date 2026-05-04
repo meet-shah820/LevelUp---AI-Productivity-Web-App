@@ -22,6 +22,7 @@ import {
 	ensureStreakSaverQuest,
 	buildEngagementPublic,
 } from "../services/engagementMechanics.js";
+import { buildQuestExerciseItemList, mergeExerciseProgress } from "../services/questExerciseItems.js";
 import {
 	startOfDay,
 	endOfDay,
@@ -174,6 +175,13 @@ router.get("/", async (req, res) => {
 	}
 });
 
+function exercisesForQuestResponse(questDoc, goalLean, detailSteps) {
+	const steps = Array.isArray(detailSteps) ? detailSteps.map((s) => String(s)) : [];
+	const qPlain = questDoc?.toObject ? questDoc.toObject() : questDoc;
+	const items = buildQuestExerciseItemList(qPlain, goalLean, steps);
+	return mergeExerciseProgress(items, questDoc.exerciseProgress);
+}
+
 function hasStoredBriefing(questDoc) {
 	if (!questDoc.briefingSchemaVersion || questDoc.briefingSchemaVersion < BRIEFING_SCHEMA_VERSION) {
 		return false;
@@ -208,6 +216,7 @@ router.get("/:id/details", async (req, res) => {
 				const cr = userSnap?.comebackBonusQuestsRemaining ?? 0;
 				const projectedXp = cr > 0 ? Math.round(quest.xpReward * 2) : quest.xpReward;
 				const b = quest.briefing || {};
+				const stepArr = Array.isArray(b.steps) ? b.steps.map((s) => String(s)) : [];
 				return res.json({
 					quest: {
 						id: quest._id,
@@ -226,11 +235,12 @@ router.get("/:id/details", async (req, res) => {
 						summary: String(b.summary || "").trim() || quest.title,
 						whatYouImprove: String(b.whatYouImprove || "").trim(),
 						doneWhen: String(b.doneWhen || "").trim(),
-						steps: Array.isArray(b.steps) ? b.steps.map((s) => String(s)) : [],
+						steps: stepArr,
 						tips: String(b.tips || "").trim(),
 						source: String(b.source || "fallback"),
 						howTo: String(b.howTo || "").trim(),
 					},
+					exercises: exercisesForQuestResponse(quest, goal, stepArr),
 					isPenaltyActive: false,
 					originalTitle: quest.title,
 					questTag: quest.questTag,
@@ -264,6 +274,7 @@ router.get("/:id/details", async (req, res) => {
 						source: "fallback",
 						howTo: pen.howTo || "",
 					},
+					exercises: exercisesForQuestResponse(quest, goal, pen.steps),
 					isPenaltyActive: true,
 					originalTitle: quest.title,
 				});
@@ -333,6 +344,7 @@ router.get("/:id/details", async (req, res) => {
 					...detailsInWindow,
 					howTo: detailsInWindow.howTo || "",
 				},
+				exercises: exercisesForQuestResponse(quest, goal, detailsInWindow.steps),
 				isPenaltyActive: false,
 				originalTitle: quest.title,
 			});
@@ -398,6 +410,7 @@ router.get("/:id/details", async (req, res) => {
 				...details,
 				howTo: details.howTo || "",
 			},
+			exercises: exercisesForQuestResponse(quest, goal, details.steps),
 			isPenaltyActive: false,
 			originalTitle: quest.title,
 		});
@@ -405,6 +418,53 @@ router.get("/:id/details", async (req, res) => {
 		// eslint-disable-next-line no-console
 		console.error(e);
 		return res.status(500).json({ error: "Failed to load quest details" });
+	}
+});
+
+// PATCH /api/quests/:id/exercise-check — toggle individual exercise / step completion
+router.patch("/:id/exercise-check", async (req, res) => {
+	try {
+		const { id } = req.params;
+		const key = req.body?.key != null ? String(req.body.key).slice(0, 200) : "";
+		const completed = !!req.body?.completed;
+		if (!mongoose.Types.ObjectId.isValid(id) || !key) {
+			return res.status(400).json({ error: "Invalid request" });
+		}
+		const user = await getUserForReq(req);
+		const quest = await Quest.findOne({ _id: id, userId: user._id });
+		if (!quest) {
+			return res.status(404).json({ error: "Quest not found" });
+		}
+		const goal = quest.goalId ? await Goal.findById(quest.goalId).lean() : null;
+		const steps = Array.isArray(quest.briefing?.steps) ? quest.briefing.steps.map((s) => String(s)) : [];
+		const qPlain = quest.toObject();
+		const items = buildQuestExerciseItemList(qPlain, goal, steps);
+		const valid = new Set(items.map((it) => it.key));
+		if (!valid.has(key)) {
+			return res.status(400).json({ error: "Unknown exercise key" });
+		}
+
+		const arr = Array.isArray(quest.exerciseProgress) ? [...quest.exerciseProgress] : [];
+		const idx = arr.findIndex((p) => p && p.key === key);
+		if (idx >= 0) {
+			arr[idx] = {
+				...arr[idx],
+				key,
+				completed,
+				completedAt: completed ? new Date() : null,
+			};
+		} else {
+			arr.push({ key, completed, completedAt: completed ? new Date() : null });
+		}
+		quest.exerciseProgress = arr;
+		await quest.save();
+
+		const exercises = exercisesForQuestResponse(quest, goal, steps);
+		return res.json({ exercises });
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error(e);
+		return res.status(500).json({ error: "Failed to update exercise progress" });
 	}
 });
 
