@@ -1,5 +1,77 @@
 import { getWorkoutRowsForQuestFromSnapshot } from "./programModulesRotation.js";
 
+/** Multiple prescription clauses in one string (e.g. squats, push-ups, plank). */
+function looksCompoundExerciseNarrative(label) {
+	const s = String(label || "");
+	const m = s.match(/\d+\s*sets?\s+of\b/gi);
+	return !!(m && m.length >= 2);
+}
+
+/**
+ * Turn one line of text into separate exercise lines when comma-separated "N sets of …" clauses exist,
+ * or when multiple sentences each prescribe work.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function splitCompoundNarrativeToExercises(text) {
+	let t = String(text || "").trim();
+	if (!t) return [];
+
+	// Drop generic logging / note tails so they don't stick to the last exercise
+	t = t.replace(/\s*Log\s+reps?\b[^.]*\.?/i, "").trim();
+	t = t.replace(/\s*Record\s+(each\s+)?reps?\b[^.]*\.?/i, "").trim();
+	t = t.replace(/\s*Note:\s*[^.]+\.?/i, "").trim();
+
+	const commaSplit = t.split(/\s*,\s*(?=\d+\s*sets?\s+of\b)/i);
+	if (commaSplit.length >= 2) {
+		return commaSplit
+			.map((p, idx) => {
+				let line = p.trim();
+				if (idx === 0) line = line.replace(/^(complete|then)\s+/i, "").trim();
+				return line.replace(/\.$/, "").trim();
+			})
+			.filter((s) => s.length > 0);
+	}
+
+	const sentences = t
+		.split(/\.\s+/)
+		.map((s) => s.trim())
+		.filter((s) => s.length > 10);
+	const exerciseLike = sentences.filter(
+		(s) =>
+			/\d+\s*sets?\s+of\b/i.test(s) ||
+			/\b(squats?|push-?ups?|plank|deadlifts?|rows?|press(?:es)?|curls?|lunges?|pull-?ups?|burpees?)\b/i.test(s)
+	);
+	if (exerciseLike.length >= 2) {
+		return exerciseLike.map((s) => s.replace(/\.$/, "").trim());
+	}
+
+	return [t];
+}
+
+/**
+ * If a checklist row still bundles several exercises, split into one row each (stable sub-keys).
+ * @param {{ key: string, label: string, meta: string|null }[]} items
+ */
+function expandCompoundStepItems(items) {
+	const out = [];
+	for (const it of items) {
+		const parts = splitCompoundNarrativeToExercises(it.label);
+		if (parts.length <= 1) {
+			out.push(it);
+			continue;
+		}
+		parts.forEach((label, j) => {
+			out.push({
+				key: `${it.key}:part:${j}`,
+				label: label.slice(0, 800),
+				meta: it.meta,
+			});
+		});
+	}
+	return out;
+}
+
 function normalizeKey(name) {
 	return String(name || "")
 		.toLowerCase()
@@ -27,9 +99,10 @@ function formatWorkoutMeta(w) {
  * @param {Record<string, unknown>} quest — lean or doc
  * @param {Record<string, unknown>|null|undefined} goal — lean goal
  * @param {string[]} stepsFallback — briefing execution steps (ordered tasks)
+ * @param {string} [howToFallback] — full how-to narrative (often lists several exercises in one block)
  * @returns {{ key: string, label: string, meta: string|null }[]}
  */
-export function buildQuestExerciseItemList(quest, goal, stepsFallback) {
+export function buildQuestExerciseItemList(quest, goal, stepsFallback, howToFallback = "") {
 	const category = String(goal?.category || "")
 		.toLowerCase()
 		.trim();
@@ -56,14 +129,63 @@ export function buildQuestExerciseItemList(quest, goal, stepsFallback) {
 		}
 	}
 
+	const howTo = String(howToFallback || "").trim();
+
 	const steps = Array.isArray(stepsFallback)
 		? stepsFallback.map((s) => String(s || "").trim()).filter((s) => s.length > 0)
 		: [];
-	return steps.map((label, i) => ({
+
+	/** @type {{ key: string, label: string, meta: string|null }[]} */
+	let items = steps.map((label, i) => ({
 		key: `step:${i}`,
 		label: label.slice(0, 800),
 		meta: null,
 	}));
+
+	items = expandCompoundStepItems(items);
+
+	// Single row still bundles multiple prescriptions (parser missed e.g. odd punctuation)
+	if (items.length === 1 && looksCompoundExerciseNarrative(items[0].label)) {
+		const parts = splitCompoundNarrativeToExercises(items[0].label);
+		if (parts.length > 1) {
+			items = parts.map((label, j) => ({
+				key: `${items[0].key}:part:${j}`,
+				label: label.slice(0, 800),
+				meta: null,
+			}));
+		}
+	}
+
+	// No steps (or empty): derive from howTo when it lists multiple exercises
+	if (items.length === 0 && howTo) {
+		const parts = splitCompoundNarrativeToExercises(howTo);
+		if (parts.length > 0) {
+			items = parts.map((label, i) => ({
+				key: `howto:${i}`,
+				label: label.slice(0, 800),
+				meta: null,
+			}));
+		}
+	}
+
+	// Steps didn't split but howTo has clearer multiple clauses (briefing step duplicated vs howTo detail)
+	if (
+		items.length === 1 &&
+		looksCompoundExerciseNarrative(items[0].label) &&
+		howTo &&
+		looksCompoundExerciseNarrative(howTo)
+	) {
+		const fromHow = splitCompoundNarrativeToExercises(howTo);
+		if (fromHow.length > 1) {
+			items = fromHow.map((label, i) => ({
+				key: `howto:${i}`,
+				label: label.slice(0, 800),
+				meta: null,
+			}));
+		}
+	}
+
+	return items;
 }
 
 /**

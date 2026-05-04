@@ -175,10 +175,14 @@ router.get("/", async (req, res) => {
 	}
 });
 
-function exercisesForQuestResponse(questDoc, goalLean, detailSteps) {
+function exercisesForQuestResponse(questDoc, goalLean, detailSteps, howToOverride) {
 	const steps = Array.isArray(detailSteps) ? detailSteps.map((s) => String(s)) : [];
 	const qPlain = questDoc?.toObject ? questDoc.toObject() : questDoc;
-	const items = buildQuestExerciseItemList(qPlain, goalLean, steps);
+	const howTo =
+		howToOverride !== undefined && howToOverride !== null
+			? String(howToOverride || "").trim()
+			: String(questDoc.briefing?.howTo || "").trim();
+	const items = buildQuestExerciseItemList(qPlain, goalLean, steps, howTo);
 	return mergeExerciseProgress(items, questDoc.exerciseProgress);
 }
 
@@ -274,7 +278,7 @@ router.get("/:id/details", async (req, res) => {
 						source: "fallback",
 						howTo: pen.howTo || "",
 					},
-					exercises: exercisesForQuestResponse(quest, goal, pen.steps),
+					exercises: exercisesForQuestResponse(quest, goal, pen.steps, pen.howTo),
 					isPenaltyActive: true,
 					originalTitle: quest.title,
 				});
@@ -437,8 +441,9 @@ router.patch("/:id/exercise-check", async (req, res) => {
 		}
 		const goal = quest.goalId ? await Goal.findById(quest.goalId).lean() : null;
 		const steps = Array.isArray(quest.briefing?.steps) ? quest.briefing.steps.map((s) => String(s)) : [];
+		const howToLine = String(quest.briefing?.howTo || "").trim();
 		const qPlain = quest.toObject();
-		const items = buildQuestExerciseItemList(qPlain, goal, steps);
+		const items = buildQuestExerciseItemList(qPlain, goal, steps, howToLine);
 		const valid = new Set(items.map((it) => it.key));
 		if (!valid.has(key)) {
 			return res.status(400).json({ error: "Unknown exercise key" });
@@ -459,7 +464,7 @@ router.patch("/:id/exercise-check", async (req, res) => {
 		quest.exerciseProgress = arr;
 		await quest.save();
 
-		const exercises = exercisesForQuestResponse(quest, goal, steps);
+		const exercises = exercisesForQuestResponse(quest, goal, steps, howToLine);
 		return res.json({ exercises });
 	} catch (e) {
 		// eslint-disable-next-line no-console
