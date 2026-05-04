@@ -52,14 +52,14 @@ export default function Analytics() {
       color: "from-indigo-500 to-purple-600",
     },
     {
-      label: "Quests Completed",
+      label: "Quests finished",
       value: data ? data.stats.questsCompleted : "—",
       change: "",
       icon: Target,
       color: "from-green-500 to-emerald-600",
     },
     {
-      label: "Focus Time",
+      label: "Training focus (h)",
       value: data ? `${data.stats.focusHours}h` : "—",
       change: "",
       icon: Clock,
@@ -83,7 +83,7 @@ export default function Analytics() {
         className="space-y-2"
       >
         <h1 className="text-3xl font-bold text-white">Analytics</h1>
-        <p className="text-gray-400">Track your progress and performance</p>
+        <p className="text-gray-400">Training volume, XP, quests, and focus blocks at a glance</p>
       </motion.div>
 
       {/* Stats Grid */}
@@ -177,7 +177,7 @@ export default function Analytics() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Quests Completed</h2>
+                  <h2 className="text-lg font-bold text-white">Quests finished</h2>
                   <p className="text-sm text-gray-400">Monthly breakdown</p>
                 </div>
                 <Target className="w-5 h-5 text-green-400" />
@@ -216,8 +216,8 @@ export default function Analytics() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Focus Time</h2>
-                  <p className="text-sm text-gray-400">Daily focus sessions</p>
+                  <h2 className="text-lg font-bold text-white">Training focus</h2>
+                  <p className="text-sm text-gray-400">Daily logged focus blocks</p>
                 </div>
                 <Clock className="w-5 h-5 text-purple-400" />
               </div>
@@ -262,8 +262,8 @@ export default function Analytics() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Stat Distribution</h2>
-                  <p className="text-sm text-gray-400">Current attributes</p>
+                  <h2 className="text-lg font-bold text-white">Stat spread</h2>
+                  <p className="text-sm text-gray-400">STR · INT · AGI · VIT from completed work</p>
                 </div>
                 <Zap className="w-5 h-5 text-indigo-400" />
               </div>
@@ -303,7 +303,7 @@ export default function Analytics() {
       >
         <Card className="bg-gradient-to-br from-[#111827] to-[#1F2937] border-purple-500/20">
           <div className="p-6">
-            <h2 className="text-lg font-bold text-white mb-6">This Month's Achievements</h2>
+            <h2 className="text-lg font-bold text-white mb-6">This month at a glance</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 rounded-xl bg-white/5 border border-purple-500/20 text-center">
                 <p className="text-3xl font-bold text-white mb-1">{month.questsCompleted}</p>
@@ -311,7 +311,7 @@ export default function Analytics() {
               </div>
               <div className="p-4 rounded-xl bg-white/5 border border-purple-500/20 text-center">
                 <p className="text-3xl font-bold text-white mb-1">{month.focusHours}h</p>
-                <p className="text-sm text-gray-400">Focus Time</p>
+                <p className="text-sm text-gray-400">Focus blocks</p>
               </div>
               <div className="p-4 rounded-xl bg-white/5 border border-purple-500/20 text-center">
                 <p className="text-3xl font-bold text-white mb-1">{month.levelsGained}</p>

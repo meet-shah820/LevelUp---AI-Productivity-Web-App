@@ -174,7 +174,7 @@ export default function Dashboard() {
         currentXP: 0,
         maxXP: 100,
         rank: "E",
-        title: "The System's Chosen",
+        title: "Rising Hunter",
       };
     }
     const dn = String(data.user.displayName || "").trim();
@@ -185,7 +185,7 @@ export default function Dashboard() {
       currentXP: data.user.xp,
       maxXP: data.user.nextLevelXp,
       rank: data.user.rank ?? "E",
-      title: "The System's Chosen",
+      title: "Rising Hunter",
     };
   }, [data]);
 
@@ -298,7 +298,7 @@ export default function Dashboard() {
         <h1 className="text-3xl lg:text-4xl font-bold text-white">
           Welcome back, <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">{user.name}</span>
         </h1>
-        <p className="text-gray-400">Continue your journey to greatness</p>
+        <p className="text-gray-400">Stack wins in the gym — daily missions, weekly checkpoints, monthly milestones</p>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -414,7 +414,7 @@ export default function Dashboard() {
             <Card className="bg-[#111827] border-purple-500/20 shadow-xl shadow-purple-500/10">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-white">Daily Quests</h2>
+                  <h2 className="text-xl font-bold text-white">Today&apos;s missions</h2>
                   <span className="text-sm text-gray-400">
                     {dailyQuests.filter((q) => q.isCompleted).length}/{dailyQuests.length} Completed
                   </span>
@@ -451,8 +451,8 @@ export default function Dashboard() {
                                 {quest.title}
                               </p>
                               {quest.isPenaltyActive && !quest.isCompleted && (
-                                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-rose-500/40 text-rose-300 bg-rose-500/10">
-                                  Penalty
+                                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-teal-500/40 text-teal-200 bg-teal-500/10">
+                                  Recovery
                                 </span>
                               )}
                             </div>
@@ -537,7 +537,7 @@ export default function Dashboard() {
           >
             <Card className="bg-[#111827] border-purple-500/20">
               <div className="p-6 space-y-4">
-                <h3 className="text-lg font-bold text-white mb-4">Today's Progress</h3>
+                <h3 className="text-lg font-bold text-white mb-4">Today in training</h3>
 
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
                   <div className="flex items-center gap-3">
@@ -545,7 +545,7 @@ export default function Dashboard() {
                       <Target className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400">Quests</p>
+                      <p className="text-sm text-gray-400">Quests done</p>
                       <p className="text-lg font-bold text-white">{todayProgress.questLabel}</p>
                     </div>
                   </div>
@@ -558,7 +558,7 @@ export default function Dashboard() {
                       <Clock className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400">Focus Time</p>
+                      <p className="text-sm text-gray-400">Training focus</p>
                       <p className="text-lg font-bold text-white">{todayProgress.focusLabel}</p>
                     </div>
                   </div>
@@ -593,7 +593,7 @@ export default function Dashboard() {
                 <div className="space-y-3">
                   {activities.length === 0 ? (
                     <p className="text-sm text-gray-500 py-2 text-center">
-                      No recent activity yet. Complete a quest, focus session, or unlock an achievement to see it here.
+                      No recent activity yet. Finish a quest, log a training-focus session, or unlock an achievement to see it here.
                     </p>
                   ) : (
                     activities.map((activity) => (
@@ -630,7 +630,7 @@ export default function Dashboard() {
           className="fixed inset-0 flex items-center justify-center bg-black/70 z-50"
         >
           <div className="px-8 py-6 rounded-2xl border border-purple-500/40 bg-gradient-to-br from-[#111827] to-[#1F2937] text-center shadow-2xl shadow-purple-500/30">
-            <p className="text-purple-400 font-bold text-sm">System Message</p>
+            <p className="text-purple-400 font-bold text-sm">System message</p>
             <h3 className="text-3xl font-extrabold text-white mt-1">Level Up!</h3>
             <p className="text-gray-400 mt-1">You have advanced to Level {user.level}</p>
           </div>

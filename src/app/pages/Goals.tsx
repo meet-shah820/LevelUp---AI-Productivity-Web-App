@@ -27,13 +27,6 @@ import {
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import { Goal, categoryColors, type GoalRarity } from "../utils/goalSystem";
 import { createGoal, deleteGoal, getGoals, getAnalytics, RANK_UPDATED_EVENT } from "../utils/api";
 import { useEffect } from "react";
@@ -60,16 +53,19 @@ function mapServerGoals(raw: any[]): Goal[] {
       const d = new Date(deadlineRaw);
       deadline = Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
     }
+    const libCount = g.fitnessLibraryMatchCount;
     return {
       id: normalizeGoalId(g._id ?? g.id),
       title: g.title,
-      category: (g.category || "Personal") as Goal["category"],
+      category: "Fitness" as Goal["category"],
       rarity: normalizeRarity(g.rarity),
       description: typeof g.description === "string" ? g.description : "",
       deadline,
       progress: 0,
       createdAt: g.createdAt,
-      color: categoryColors[(g.category || "Personal") as Goal["category"]],
+      color: categoryColors.Fitness,
+      fitnessLibraryMatchCount:
+        typeof libCount === "number" && Number.isFinite(libCount) ? libCount : undefined,
     };
   });
 }
@@ -250,15 +246,17 @@ export default function Goals() {
         className="flex items-center justify-between"
       >
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-white">Goals</h1>
-          <p className="text-gray-400">Define your goals and the system will create quests to help you achieve them</p>
+          <h1 className="text-3xl font-bold text-white">Training</h1>
+          <p className="text-gray-400">
+            Build training programs and get daily, weekly, and monthly fitness quests from the program engine
+          </p>
         </div>
         <Button
           onClick={handleAddGoal}
           className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
         >
           <Plus className="w-5 h-5 mr-2" />
-          Add Goal
+          Add program
         </Button>
       </motion.div>
 
@@ -276,7 +274,7 @@ export default function Goals() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{goals.length}</p>
-                <p className="text-xs text-gray-400">Active Goals</p>
+                <p className="text-xs text-gray-400">Active programs</p>
               </div>
             </div>
           </Card>
@@ -330,16 +328,16 @@ export default function Goals() {
         >
           <Card className="bg-[#111827] border-purple-500/20 p-12 text-center">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">No Goals Yet</h3>
+            <h3 className="text-xl font-bold text-white mb-2">No programs yet</h3>
             <p className="text-gray-400 mb-6">
-              Add your first goal and the system will generate personalized quests to help you achieve it
+              Add a program (strength, conditioning, fat loss, race prep) and the app will seed progressive fitness quests
             </p>
             <Button
               onClick={handleAddGoal}
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >
               <Plus className="w-5 h-5 mr-2" />
-              Add Your First Goal
+              Add your first program
             </Button>
           </Card>
         </motion.div>
@@ -374,6 +372,19 @@ export default function Goals() {
                             <Badge variant="outline" className="border-white/20 text-gray-300 capitalize">
                               {goal.rarity}
                             </Badge>
+                            {goal.fitnessLibraryMatchCount != null && (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  goal.fitnessLibraryMatchCount > 0
+                                    ? "border-emerald-500/40 text-emerald-300/90"
+                                    : "border-amber-500/30 text-amber-200/80"
+                                }
+                                title="Reference exercises from the ingested library used to ground AI-generated quests"
+                              >
+                                Library: {goal.fitnessLibraryMatchCount > 0 ? `${goal.fitnessLibraryMatchCount} matches` : "no matches"}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -409,7 +420,7 @@ export default function Goals() {
                     {/* Progress */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Progress</span>
+                        <span className="text-gray-400">Program progress</span>
                         <span className="text-white font-medium">{goal.progress}%</span>
                       </div>
                       <Progress value={goal.progress} className="h-2" />
@@ -437,7 +448,7 @@ export default function Goals() {
                         className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
                         asChild
                       >
-                        <Link to={`/quests?goalId=${goal.id}`}>View Quests</Link>
+                        <Link to={`/quests?goalId=${goal.id}`}>View quests</Link>
                       </Button>
                     </div>
                   </div>
@@ -459,11 +470,11 @@ export default function Goals() {
       >
         <AlertDialogContent className="bg-[#111827] border-purple-500/30 text-white sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Delete this goal?</AlertDialogTitle>
+            <AlertDialogTitle className="text-white">Delete this training program?</AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
               {goalPendingDelete ? (
                 <>
-                  <span className="font-medium text-gray-300">"{goalPendingDelete.title}"</span> will be removed from your active goals. You can cancel if you clicked by mistake.
+                  <span className="font-medium text-gray-300">"{goalPendingDelete.title}"</span> will be removed from your active programs. You can cancel if you clicked by mistake.
                 </>
               ) : null}
             </AlertDialogDescription>
@@ -482,28 +493,29 @@ export default function Goals() {
               className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600 border-0 sm:mt-0"
               onClick={handleConfirmDeleteGoal}
             >
-              {deleteInProgress ? "Deleting…" : "Delete goal"}
+              {deleteInProgress ? "Deleting…" : "Delete program"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add/Edit Goal Dialog */}
+      {/* Add/Edit training program dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="bg-[#111827] border-purple-500/30 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingGoal ? "Edit Goal" : "Add New Goal"}</DialogTitle>
+            <DialogTitle>{editingGoal ? "Edit program" : "New program"}</DialogTitle>
             <DialogDescription className="text-gray-400">
-              Define your goal and the system will generate personalized daily, weekly, and monthly quests
+              Every program is fitness-only: daily missions, weekly checkpoints, monthly milestones, plus recovery quests
+              if you fall behind
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="title">Goal Title</Label>
+              <Label htmlFor="title">Program title</Label>
               <Input
                 id="title"
-                placeholder="e.g., Become the Best Bodybuilder"
+                placeholder="e.g., Add 40 lb to squat in 12 weeks"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white"
@@ -511,31 +523,10 @@ export default function Goals() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value as Goal["category"] })}
-              >
-                <SelectTrigger className="bg-[#0B0F1A] border-purple-500/30 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#111827] border-purple-500/30 text-white">
-                  <SelectItem value="Fitness">🏋️ Fitness</SelectItem>
-                  <SelectItem value="Learning">📚 Learning</SelectItem>
-                  <SelectItem value="Business">💼 Business</SelectItem>
-                  <SelectItem value="Health">❤️ Health</SelectItem>
-                  <SelectItem value="Career">🚀 Career</SelectItem>
-                  <SelectItem value="Personal">🌟 Personal</SelectItem>
-                  <SelectItem value="Creative">🎨 Creative</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="description">Notes (optional)</Label>
               <Textarea
                 id="description"
-                placeholder="Extra context for the System (constraints, niche, starting point)…"
+                placeholder="Equipment, injuries to avoid, days per week, experience level…"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white min-h-[80px]"
@@ -567,7 +558,7 @@ export default function Goals() {
               disabled={!formData.title}
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >
-              {editingGoal ? "Update Goal" : "Create Goal"}
+              {editingGoal ? "Update program" : "Create program"}
             </Button>
           </DialogFooter>
         </DialogContent>

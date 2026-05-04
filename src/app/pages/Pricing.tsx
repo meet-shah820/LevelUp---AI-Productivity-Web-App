@@ -144,7 +144,7 @@ export default function Pricing() {
 				</div>
 				<h1 className="text-3xl lg:text-4xl font-bold text-white">Choose your tier</h1>
 				<p className="text-gray-400 text-sm lg:text-base">
-					Free forever for core progression. Upgrade for analytics, deeper quests, and elite perks — billed monthly
+					Free forever for core training progression. Upgrade for analytics, deeper quest packs, and elite perks — billed monthly
 					through Stripe. Amounts show live Stripe prices when your server can load each Price ID; otherwise catalog
 					estimates are shown and Subscribe stays off until keys match.
 				</p>

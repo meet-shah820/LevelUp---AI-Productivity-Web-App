@@ -355,7 +355,7 @@ export default function Settings() {
         className="space-y-2"
       >
         <h1 className="text-3xl font-bold text-white">Settings</h1>
-        <p className="text-gray-400">Manage your account and preferences</p>
+        <p className="text-gray-400">Account, notifications, security, and billing for your fitness quest log</p>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

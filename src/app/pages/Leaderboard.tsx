@@ -148,7 +148,7 @@ export default function Leaderboard() {
 					</span>
 				</div>
 				<p className="text-white/55 text-sm md:text-base max-w-2xl">
-					Each Hunter rank has its own board. Tabs for ranks you have not reached yet stay hidden until you promote.
+					Each Hunter rank has its own board (fitness quest XP and progression). Tabs for ranks you have not reached yet stay hidden until you promote.
 					You only compete with players on the same rank. Sorting is by XP, then level and stats. Underdog boost applies
 					on your current-rank board when active.
 				</p>

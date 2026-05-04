@@ -94,7 +94,7 @@ export default function Profile() {
         currentXP: 0,
         maxXP: 100,
         rank: "E",
-        title: "The System's Chosen",
+        title: "Rising Hunter",
         joinDate: "—",
         bio: "",
       };
@@ -109,7 +109,7 @@ export default function Profile() {
       currentXP: data.user.xp,
       maxXP: data.user.nextLevelXp,
       rank: data.user.rank ?? "E",
-      title: "The System's Chosen",
+      title: "Rising Hunter",
       joinDate: "—",
       bio: data.user.bio || "",
     };
@@ -151,7 +151,7 @@ export default function Profile() {
         className="space-y-2"
       >
         <h1 className="text-3xl font-bold text-white">Profile</h1>
-        <p className="text-gray-400">Your journey and achievements</p>
+        <p className="text-gray-400">Your hunter profile, stats, and training history</p>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -242,7 +242,7 @@ export default function Profile() {
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
                       <Target className="w-5 h-5 text-white" />
                     </div>
-                    <span className="text-sm text-gray-400">Total Quests</span>
+                    <span className="text-sm text-gray-400">Quests completed</span>
                   </div>
                   <span className="text-lg font-bold text-white">{data?.quickStats?.questsCompleted ?? 0}</span>
                 </div>
@@ -251,7 +251,7 @@ export default function Profile() {
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
                       <Clock className="w-5 h-5 text-white" />
                     </div>
-                    <span className="text-sm text-gray-400">Focus Time</span>
+                    <span className="text-sm text-gray-400">Training focus time</span>
                   </div>
                   <span className="text-lg font-bold text-white">{data?.quickStats?.focusHours ?? 0}h</span>
                 </div>

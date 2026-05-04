@@ -18,6 +18,10 @@ const GoalSchema = new mongoose.Schema(
 		},
 		/** @deprecated use rarity */
 		difficulty: { type: String, enum: ["Easy", "Medium", "Hard", "Epic"], required: false },
+		/** Last AI fitness program snapshot (user_profile + recovery_logic) when generated. */
+		fitnessPlanSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+		/** How many fitness-library rows were matched to this goal for AI grounding (0 if library empty). */
+		fitnessLibraryMatchCount: { type: Number, default: 0 },
 	},
 	{ timestamps: true }
 );

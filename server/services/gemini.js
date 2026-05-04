@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { mapFitnessAiJsonToPlan } from "./fitnessPlanMapper.js";
 
 const apiKey = process.env.GEMINI_API_KEY || "";
 let genAI;
@@ -474,43 +475,61 @@ Output ONLY JSON array (no markdown): ${jsonShape}
 statType: str|int|agi|vit only. XP 40–120 per quest.`;
 }
 
-/** One structured roadmap for a single goal (used on goal create). */
-const FULL_GOAL_PLAN_SYSTEM_INSTRUCTION = `You are an elite execution system. You convert ONE user goal into a self-contained execution roadmap.
+/** Fitness-only program engine (goal create). */
+const FITNESS_PROGRAM_ENGINE_INSTRUCTION = `You are an elite strength & conditioning coach and adaptive fitness program engine.
 
-You are NOT a coach. You do NOT ask questions. You do NOT request more information. Assume beginner defaults and proceed.
+Generate structured, progressive, adaptive fitness plans: daily_quests, weekly_quests, monthly_quests, recovery_logic.
+You are NOT a conversational assistant. Output ONLY valid JSON (no markdown, no prose).
 
-OUTPUT: Reply with ONLY one JSON object (no markdown fences, no commentary). Shape:
+Rules: safety first; progressive overload; realistic workload; consistency over intensity; gym access and beginner-to-intermediate unless USER CONTEXT says otherwise; no medical advice; measurable sets/reps/time/rest.
+
+Goal lock: user_profile.goal must paraphrase the PRIMARY TRAINING GOAL from the user message (same intent and domain). Do not invent a different outcome. Every daily_quest title, objective, and workout must visibly advance that exact goal (e.g. 5k goal → running/conditioning volume; max squat → squat pattern and accessories). Weekly and monthly layers must measure progress toward the same goal.
+
+When the user message includes REFERENCE_LIBRARY (exercise rows from this app database), prefer those exercise names, muscle categories, and equipment when they fit the stated goal; otherwise use standard safe gym movements. Daily quests are the user schedule — each must stay actionable and time-bounded.
+
+Missed tasks: recovery_logic must describe Recovery Quests (never shame), reduce volume 20-40%, restore consistency.
+
+Use EXACTLY the array lengths requested in the user message for daily_quests, weekly_quests, monthly_quests.
+
+Required JSON shape (snake_case):
 {
-  "goalRestated": "string",
-  "currentPhase": "Foundation" | "Development" | "Acceleration" | "Mastery",
-  "progressionRule": "string — one measurable condition to advance phase",
-  "dailyQuests": [ ... ],
-  "weeklyQuests": [ ... ],
-  "monthlyQuests": [ ... ]
+  "user_profile": { "goal": "", "level": "", "days_per_week": 0 },
+  "daily_quests": [
+    {
+      "day": 1,
+      "title": "",
+      "objective": "",
+      "workout": [
+        { "name": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "" }
+      ],
+      "completion_rule": "",
+      "motivation_tip": ""
+    }
+  ],
+  "weekly_quests": [
+    { "week": 1, "objective": "", "success_criteria": "", "expected_adaptation": "" }
+  ],
+  "monthly_quests": [
+    { "month": 1, "goal": "", "progress_targets": "", "consistency_requirement": "" }
+  ],
+  "recovery_logic": {
+    "trigger_condition": "missed daily or weekly quest",
+    "recovery_quest_structure": {
+      "title": "Recovery Quest",
+      "adjustment_rule": "reduce intensity 20-40%",
+      "focus": "consistency restoration",
+      "workout": [
+        { "name": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "" }
+      ]
+    }
+  }
 }
+`;
 
-Each quest object MUST be:
-{
-  "title": "Short imperative headline (Execute/Complete/Perform …). May omit digits in title if instructions contain all numbers.",
-  "instructions": "Full execution block: WHAT, HOW step-by-step, durations, counts, scripts, rest rules — self-contained (no Google). Multiple paragraphs allowed.",
-  "completionStandard": "Binary measurable completion line",
-  "statType": "str" | "int" | "agi" | "vit",
-  "xp": number,
-  "difficulty": "easy" | "medium" | "hard"
-}
-
-QUEST COUNTS (scale to horizon the user message provides — use the higher end when the goal is large or the deadline is far):
-- If horizon ~1–3 months: about 3–6 daily, 2–5 weekly, 2–4 monthly.
-- If ~6 months: about 5–10 daily, 3–8 weekly, 3–6 monthly.
-- If ~12+ months: about 8–15 daily, 5–12 weekly, 4–8 monthly.
-- If no deadline/horizon given: assume ~12-week horizon; use ~3–5 daily, ~2–4 weekly, ~2–3 monthly.
-
-Hard caps (do not exceed): 15 daily, 12 weekly, 8 monthly.
-
-SCOPE: Every quest must advance ONLY the single goal in the user message. No unrelated domains. No generic filler.
-STYLE: Imperative commands, concrete numbers inside instructions, no motivational fluff, no questions to the user.
-PHRASING: Use normal English. For money tasks prefer **savings account**, **checking account**, **bank transfer**, **spreadsheet**, **invoice** — not "savings bucket" unless the user's goal uses that word. Avoid robotic **"1 … in 1 …"** chains (e.g. wrong: "1 savings bucket in 1 banking transfer"; right: "Transfer $25 to one savings account" or "One transfer of $25 to your savings account"). Titles and instructions must read naturally aloud.
-PUNISHMENT: Do not emit a separate punishment list; fold difficulty into normal quests only.`;
+/** Regenerate only daily_quests, weekly_quests, or monthly_quests when full-plan validation fails. */
+const FITNESS_PLAN_SLICE_INSTRUCTION = `You are the same strength & conditioning program engine as the main app, but you output exactly ONE JSON object with exactly ONE top-level array key (snake_case). No markdown, no prose.
+Safety first; measurable sets/reps/time/rest; progressive overload; serve the PRIMARY TRAINING GOAL from the user message only (same intent — do not switch topics).
+Fill every required field; use concrete numbers in workout rows or in success strings.`;
 
 function estimateHorizonMonths(deadlineDate, targetHorizonText) {
 	const text = String(targetHorizonText || "")
@@ -568,7 +587,8 @@ function sanitizeRichQuestRow(raw, tf) {
 	};
 }
 
-function validateRichQuestRow(q, goalTitle, category, label, i) {
+function validateRichQuestRow(q, goalTitle, category, label, i, opts = {}) {
+	const fitnessMode = opts.fitnessMode === true;
 	const errors = [];
 	const t = String(q.title || "");
 	const ins = String(q.instructions || "");
@@ -576,16 +596,16 @@ function validateRichQuestRow(q, goalTitle, category, label, i) {
 	if (t.length > 165) errors.push(`${label}[${i}] title too long`);
 	if (ins.length < 55) errors.push(`${label}[${i}] instructions too short — need full execution detail`);
 	if (!String(q.completionStandard || "").trim()) errors.push(`${label}[${i}] missing completionStandard`);
-	if (BANNED_SOFT_LANGUAGE.test(t)) errors.push(`${label}[${i}] title uses banned vague wording`);
+	if (!fitnessMode && BANNED_SOFT_LANGUAGE.test(t)) errors.push(`${label}[${i}] title uses banned vague wording`);
 	if (titleEmbedsGoalText(t, goalTitle)) errors.push(`${label}[${i}] title must not paste the goal text`);
 	if (!titleHasNumericRequirement(t) && !textHasMeasurableSignal(ins)) {
 		errors.push(`${label}[${i}] need digits or units in title or instructions`);
 	}
-	if (!contentMatchesDomain(t, ins, goalTitle, category)) {
+	if (!fitnessMode && !contentMatchesDomain(t, ins, goalTitle, category)) {
 		errors.push(`${label}[${i}] content must match goal domain`);
 	}
 	const blob = `${t} ${ins}`;
-	if (/\bsavings bucket\b|\bbanking bucket\b/i.test(blob)) {
+	if (!fitnessMode && /\bsavings bucket\b|\bbanking bucket\b/i.test(blob)) {
 		errors.push(
 			`${label}[${i}] use standard wording: "savings account" / "bank transfer" — not "savings bucket"`
 		);
@@ -597,7 +617,8 @@ function capList(arr, max) {
 	return (Array.isArray(arr) ? arr : []).slice(0, max);
 }
 
-function sanitizeAndValidateFullPlan(raw, goalTitle, category) {
+function sanitizeAndValidateFullPlan(raw, goalTitle, category, opts = {}) {
+	const fitnessMode = opts.fitnessMode === true;
 	const cat = category || "general";
 	const daily = capList(raw?.dailyQuests, 15)
 		.map((r) => sanitizeRichQuestRow(r, "daily"))
@@ -616,7 +637,7 @@ function sanitizeAndValidateFullPlan(raw, goalTitle, category) {
 		const list = tf === "daily" ? daily : tf === "weekly" ? weekly : monthly;
 		if (tf === "monthly" && list.length === 0) return;
 		list.forEach((q, i) => {
-			errors.push(...validateRichQuestRow(q, goalTitle, cat, tf, i));
+			errors.push(...validateRichQuestRow(q, goalTitle, cat, tf, i, { fitnessMode }));
 		});
 	});
 
@@ -911,16 +932,25 @@ function fallbackRichTemplate(goalTitle, category) {
 	};
 }
 
-function buildFullPlanUserMessage({
+function computeFitnessPlanCounts(months) {
+	const m = Math.max(1, Math.min(36, months));
+	const dailyTarget = Math.min(12, Math.max(3, Math.round(m * 1.6)));
+	const weeklyTarget = Math.min(10, Math.max(2, Math.ceil(m / 1.2)));
+	const monthlyTarget = Math.min(6, Math.max(2, Math.ceil(m / 3)));
+	return { dailyTarget, weeklyTarget, monthlyTarget };
+}
+
+function buildFitnessPlanUserMessage({
 	goalTitle,
-	category,
 	currentLevel,
 	deadlineDate,
 	targetHorizon,
 	description,
+	userDbContext,
+	libraryContext,
 	strictFix,
+	counts,
 }) {
-	const cat = category || "general";
 	const months = estimateHorizonMonths(deadlineDate, targetHorizon);
 	const g = escapeGoalForPrompt(goalTitle);
 	const desc = String(description || "").trim().slice(0, 800);
@@ -931,26 +961,194 @@ function buildFullPlanUserMessage({
 	const horizonLine = String(targetHorizon || "").trim()
 		? `User horizon note: "${String(targetHorizon).replace(/"/g, "'").slice(0, 120)}".`
 		: "";
+	const dbBlock =
+		userDbContext && typeof userDbContext === "object"
+			? `\nUSER CONTEXT (from app database — use to tune volume and recovery; do not contradict safety rules):\n${JSON.stringify(userDbContext).slice(0, 3500)}\n`
+			: "";
+	const libEntries =
+		libraryContext && Array.isArray(libraryContext.entries) && libraryContext.entries.length
+			? libraryContext.entries
+			: [];
+	const libNote =
+		libraryContext && typeof libraryContext.note === "string"
+			? libraryContext.note
+			: "Reference exercises ingested from open fitness datasets (e.g. wger). Use as movement/fact reference only.";
+	const libBlock =
+		libEntries.length > 0
+			? `\nREFERENCE_LIBRARY (closest rows from this app MongoDB — map into timed quests with sets/reps/rest; prefer these exercise NAMES and equipment when they fit the user goal; paraphrase descriptions, do not paste long HTML; if none fit, use safe generic gym movements):\n${libNote}\n${JSON.stringify(libEntries).slice(0, 7800)}\n`
+			: "";
 	const fix = strictFix
-		? "\n\nSTRICT FIX: Prior attempt failed validation. Ensure every quest has long instructions with numbers, completionStandard, domain matches the goal, titles do not paste the goal sentence, and arrays meet minimum lengths. Use natural finance wording (savings account, bank transfer); never \"savings bucket\" unless the goal says bucket; avoid redundant \"1 … in 1 …\" phrasing."
+		? "\n\nSTRICT FIX: Prior JSON failed app validation. Emit ONLY the required JSON. Fill every array to the exact lengths below. Every daily workout[] must have at least one exercise with sets, reps (or time), rest_seconds, form_cues. weekly_quests need measurable success_criteria. monthly_quests need concrete progress_targets."
 		: "";
-	return `Category: ${cat}. Hunter level: ${currentLevel}.
+	return `You are generating ONE adaptive fitness program for this hunter.
+
+Hunter level: ${currentLevel}.
 ${deadlineLine}
 ${horizonLine}
-Estimated horizon for sizing quest counts: ~${months} month(s).
+Estimated program horizon: ~${months} month(s).
 
-THE ONLY GOAL (every quest must exclusively serve this):
+PRIMARY TRAINING GOAL (all quests must serve this):
 "${g}"
-${desc ? `\nUser context (optional): ${desc}` : ""}
+${desc ? `\nAdditional notes from the user: ${desc}` : ""}
+Do not substitute a different goal or generic wellness plan. Tie session design, volume, and tests to this goal only.
+${dbBlock}
+${libBlock}
+REQUIRED ARRAY LENGTHS (exactly):
+- daily_quests: exactly ${counts.dailyTarget} objects (day 1..${counts.dailyTarget})
+- weekly_quests: exactly ${counts.weeklyTarget} objects
+- monthly_quests: exactly ${counts.monthlyTarget} objects
+
 ${fix}
 
-Readable phrasing: for money, use standard terms like **savings account** and **bank transfer** — not \"savings bucket\" unless the user goal uses that word. Prefer one clear clause over stacked \"1 X in 1 Y\".
+Output ONLY the JSON object described in your system instructions (snake_case keys).`;
+}
 
-Output ONLY the JSON object described in your system instructions.`;
+function fitnessPlanSliceKey(section) {
+	if (section === "daily") return "daily_quests";
+	if (section === "weekly") return "weekly_quests";
+	return "monthly_quests";
+}
+
+function fitnessPlanSectionNeedsRefill(section, errors, plan, counts) {
+	const err = Array.isArray(errors) ? errors : [];
+	const dt = Math.max(2, Math.min(15, counts.dailyTarget));
+	const wt = Math.max(2, Math.min(12, counts.weeklyTarget));
+	const mt = Math.max(1, Math.min(8, counts.monthlyTarget));
+	const d = plan?.dailyQuests?.length || 0;
+	const w = plan?.weeklyQuests?.length || 0;
+	const m = plan?.monthlyQuests?.length || 0;
+
+	if (section === "daily") {
+		if (d < 2 || err.some((e) => String(e).includes("dailyQuests"))) return true;
+		if (d < Math.max(2, Math.ceil(dt * 0.65))) return true;
+		if (err.some((e) => /^daily\[/i.test(String(e)))) return true;
+		return false;
+	}
+	if (section === "weekly") {
+		if (w < 2 || err.some((e) => String(e).includes("weeklyQuests"))) return true;
+		if (w < Math.max(2, Math.ceil(wt * 0.65))) return true;
+		if (err.some((e) => /^weekly\[/i.test(String(e)))) return true;
+		return false;
+	}
+	if (section === "monthly") {
+		if (err.some((e) => /^monthly\[/i.test(String(e)))) return true;
+		if (mt >= 2 && m < 2) return true;
+		if (m > 0 && m < Math.max(1, Math.ceil(mt * 0.65))) return true;
+		return false;
+	}
+	return false;
+}
+
+function fitnessSectionsToRefill(errors, plan, counts) {
+	/** @type {("daily"|"weekly"|"monthly")[]} */
+	const sections = [];
+	for (const s of ["daily", "weekly", "monthly"]) {
+		if (fitnessPlanSectionNeedsRefill(s, errors, plan, counts)) sections.push(s);
+	}
+	if (sections.length === 0 && errors?.length) {
+		return ["daily", "weekly", "monthly"];
+	}
+	return sections;
+}
+
+function sliceCountForSection(section, counts) {
+	if (section === "daily") return Math.max(2, Math.min(15, counts.dailyTarget));
+	if (section === "weekly") return Math.max(2, Math.min(12, counts.weeklyTarget));
+	return Math.max(1, Math.min(8, counts.monthlyTarget));
+}
+
+function buildFitnessSliceUserMessage({
+	section,
+	sliceCount,
+	goalTitle,
+	currentLevel,
+	deadlineDate,
+	targetHorizon,
+	description,
+	userDbContext,
+	libraryContext,
+	validationErrors,
+	strictFix,
+}) {
+	const key = fitnessPlanSliceKey(section);
+	const g = escapeGoalForPrompt(goalTitle);
+	const desc = String(description || "").trim().slice(0, 800);
+	const deadlineLine =
+		deadlineDate && !Number.isNaN(new Date(deadlineDate).getTime())
+			? `Calendar deadline: ${new Date(deadlineDate).toISOString().slice(0, 10)}.`
+			: "";
+	const horizonLine = String(targetHorizon || "").trim()
+		? `User horizon note: "${String(targetHorizon).replace(/"/g, "'").slice(0, 120)}".`
+		: "";
+	const dbBlock =
+		userDbContext && typeof userDbContext === "object"
+			? `\nUSER CONTEXT (from app database):\n${JSON.stringify(userDbContext).slice(0, 2200)}\n`
+			: "";
+	const libEntries =
+		libraryContext && Array.isArray(libraryContext.entries) && libraryContext.entries.length
+			? libraryContext.entries
+			: [];
+	const libNote =
+		libraryContext && typeof libraryContext.note === "string"
+			? libraryContext.note
+			: "Reference exercises from ingested open datasets.";
+	const libBlock =
+		libEntries.length > 0
+			? `\nREFERENCE_LIBRARY (prefer when they fit the goal):\n${libNote}\n${JSON.stringify(libEntries).slice(0, 5200)}\n`
+			: "";
+	const errLines = Array.isArray(validationErrors) ? validationErrors.slice(0, 12) : [];
+	const errBlock =
+		errLines.length > 0
+			? `\nThe last program failed app validation — fix these issues in your new ${key} only:\n${errLines.map((e) => `- ${e}`).join("\n")}\n`
+			: "";
+	const fix = strictFix
+		? "\n\nSTRICT: Emit ONLY one JSON object. The array must have EXACTLY the requested length. Every daily item needs workout[] with sets, reps (or time), rest_seconds, form_cues."
+		: "";
+
+	let schemaHint = "";
+	if (section === "daily") {
+		schemaHint = `Each element: { "day": 1..${sliceCount}, "title": "", "objective": "", "workout": [ { "name", "sets", "reps", "rest_seconds", "form_cues" } ], "completion_rule", "motivation_tip" }. day runs 1 through ${sliceCount} in order.`;
+	} else if (section === "weekly") {
+		schemaHint = `Each element: { "week": 1..${sliceCount}, "objective", "success_criteria", "expected_adaptation" }. week runs 1 through ${sliceCount}.`;
+	} else {
+		schemaHint = `Each element: { "month": 1..${sliceCount}, "goal", "progress_targets", "consistency_requirement" }. month runs 1 through ${sliceCount}.`;
+	}
+
+	return `Regenerate ONLY the "${key}" array for this hunter (full program failed checks or was short).
+
+Hunter level: ${currentLevel}.
+${deadlineLine}
+${horizonLine}
+
+PRIMARY TRAINING GOAL (non-negotiable — every line must advance THIS):
+"${g}"
+${desc ? `\nUser notes: ${desc}` : ""}
+${dbBlock}
+${libBlock}
+${errBlock}
+
+Output ONLY valid JSON with shape: { "${key}": [ ... ] }
+Array length: EXACTLY ${sliceCount} items.
+${schemaHint}
+${fix}`;
+}
+
+function parseFitnessSliceJson(text, key) {
+	const start = text.indexOf("{");
+	const end = text.lastIndexOf("}");
+	if (start === -1 || end === -1) return null;
+	try {
+		const obj = JSON.parse(text.slice(start, end + 1));
+		const arr = obj[key];
+		return Array.isArray(arr) ? arr : null;
+	} catch {
+		return null;
+	}
 }
 
 /**
- * @param {{ goalTitle: string, category?: string, currentLevel: number, deadlineDate?: Date|string|null, targetHorizon?: string, description?: string }} opts
+ * @param {{ goalTitle: string, category?: string, currentLevel: number, deadlineDate?: Date|string|null, targetHorizon?: string, description?: string, userDbContext?: Record<string, unknown>|null, libraryContext?: { entries: unknown[], note?: string }|null }} opts
+ * @returns {Promise<{ plan: object, fitnessSnapshot: object|null }>}
  */
 export async function generateFullGoalQuestPlan({
 	goalTitle,
@@ -959,15 +1157,22 @@ export async function generateFullGoalQuestPlan({
 	deadlineDate = null,
 	targetHorizon = "",
 	description = "",
+	userDbContext = null,
+	libraryContext = null,
 }) {
-	const cat = category || "general";
+	const cat = String(category || "Fitness");
+	const months = estimateHorizonMonths(deadlineDate, targetHorizon);
+	const counts = computeFitnessPlanCounts(months);
+
 	const fbTemplate = fallbackRichTemplate(goalTitle, cat);
-	const fb = sanitizeAndValidateFullPlan(fbTemplate, goalTitle, cat);
-	if (!genAI) return fb.plan;
+	const fb = sanitizeAndValidateFullPlan(fbTemplate, goalTitle, cat, { fitnessMode: true });
+	const finishFallback = () => ({ plan: fb.plan, fitnessSnapshot: null });
+
+	if (!genAI) return finishFallback();
 
 	const model = genAI.getGenerativeModel({
 		model: "gemini-1.5-flash",
-		systemInstruction: FULL_GOAL_PLAN_SYSTEM_INSTRUCTION,
+		systemInstruction: FITNESS_PROGRAM_ENGINE_INSTRUCTION,
 	});
 	const genConfig = {
 		temperature: 0.35,
@@ -975,19 +1180,31 @@ export async function generateFullGoalQuestPlan({
 		maxOutputTokens: 8192,
 	};
 
-	const tryParse = async (strictFix) => {
-		const prompt = buildFullPlanUserMessage({
+	const sliceModel = genAI.getGenerativeModel({
+		model: "gemini-1.5-flash",
+		systemInstruction: FITNESS_PLAN_SLICE_INSTRUCTION,
+	});
+	const sliceGenConfig = {
+		temperature: 0.26,
+		topP: 0.85,
+		maxOutputTokens: 8192,
+	};
+
+	const tryParse = async (strictFix, genOverride = {}) => {
+		const prompt = buildFitnessPlanUserMessage({
 			goalTitle,
-			category: cat,
 			currentLevel,
 			deadlineDate,
 			targetHorizon,
 			description,
+			userDbContext,
+			libraryContext,
 			strictFix,
+			counts,
 		});
 		const result = await model.generateContent({
 			contents: [{ role: "user", parts: [{ text: prompt }] }],
-			generationConfig: genConfig,
+			generationConfig: { ...genConfig, ...genOverride },
 		});
 		const text = result.response.text();
 		const start = text.indexOf("{");
@@ -996,22 +1213,86 @@ export async function generateFullGoalQuestPlan({
 		return JSON.parse(text.slice(start, end + 1));
 	};
 
-	for (let attempt = 0; attempt < 2; attempt++) {
+	let lastRaw = null;
+	/** @type {string[]} */
+	let lastErrors = [];
+	let lastPlan = fb.plan;
+
+	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
-			const raw = await tryParse(attempt > 0);
+			const genOverride = attempt >= 2 ? { temperature: 0.2 } : {};
+			const raw = await tryParse(attempt > 0, genOverride);
 			if (!raw) continue;
-			const { plan, ok, errors } = sanitizeAndValidateFullPlan(raw, goalTitle, cat);
-			if (ok) return plan;
+			lastRaw = raw;
+			const { plan: mappedPlan, fitnessSnapshot } = mapFitnessAiJsonToPlan(raw, goalTitle, counts);
+			const { plan, ok, errors } = sanitizeAndValidateFullPlan(mappedPlan, goalTitle, cat, {
+				fitnessMode: true,
+			});
+			lastErrors = errors;
+			lastPlan = plan;
+			if (ok) return { plan, fitnessSnapshot };
 			// eslint-disable-next-line no-console
-			console.warn("[gemini] full goal plan validation failed:", errors);
+			console.warn("[gemini] fitness plan validation failed:", errors);
 		} catch (e) {
 			// eslint-disable-next-line no-console
-			console.warn("[gemini] full goal plan parse failed:", e?.message || e);
+			console.warn("[gemini] fitness plan parse failed:", e?.message || e);
 		}
 	}
+
+	if (lastRaw && typeof lastRaw === "object") {
+		let working = { ...lastRaw };
+		const sections = fitnessSectionsToRefill(lastErrors, lastPlan, counts);
+		for (const section of sections) {
+			const key = fitnessPlanSliceKey(section);
+			const sliceCount = sliceCountForSection(section, counts);
+			let lastMerged = working;
+			for (let sAttempt = 0; sAttempt < 2; sAttempt++) {
+				try {
+					const prompt = buildFitnessSliceUserMessage({
+						section,
+						sliceCount,
+						goalTitle,
+						currentLevel,
+						deadlineDate,
+						targetHorizon,
+						description,
+						userDbContext,
+						libraryContext,
+						validationErrors: lastErrors,
+						strictFix: sAttempt > 0,
+					});
+					const result = await sliceModel.generateContent({
+						contents: [{ role: "user", parts: [{ text: prompt }] }],
+						generationConfig: {
+							...sliceGenConfig,
+							temperature: sAttempt > 0 ? 0.18 : 0.26,
+						},
+					});
+					const arr = parseFitnessSliceJson(result.response.text(), key);
+					if (!arr?.length) continue;
+					const raw = { ...working, [key]: arr };
+					lastMerged = raw;
+					const { plan: mappedPlan, fitnessSnapshot } = mapFitnessAiJsonToPlan(raw, goalTitle, counts);
+					const { plan, ok, errors } = sanitizeAndValidateFullPlan(mappedPlan, goalTitle, cat, {
+						fitnessMode: true,
+					});
+					lastErrors = errors;
+					lastPlan = plan;
+					if (ok) return { plan, fitnessSnapshot };
+					// eslint-disable-next-line no-console
+					console.warn(`[gemini] fitness slice "${section}" validation failed:`, errors);
+				} catch (e) {
+					// eslint-disable-next-line no-console
+					console.warn(`[gemini] fitness slice "${section}" parse failed:`, e?.message || e);
+				}
+			}
+			working = lastMerged;
+		}
+	}
+
 	// eslint-disable-next-line no-console
-	console.warn("[gemini] using fallback full goal plan for:", cat);
-	return fb.plan;
+	console.warn("[gemini] using fallback fitness plan for:", cat);
+	return finishFallback();
 }
 
 /**

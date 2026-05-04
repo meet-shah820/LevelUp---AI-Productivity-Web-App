@@ -12,12 +12,12 @@ export default function Terms() {
 
 			<section className="space-y-3">
 				<h2>2. Description of Service</h2>
-				<p>LevelUp is a productivity web app where users:</p>
+				<p>LevelUp is a fitness-focused quest and training app where users:</p>
 				<ul>
-					<li>Set goals</li>
-					<li>Complete quests</li>
-					<li>Track progress</li>
-					<li>Unlock achievements and skills</li>
+					<li>Create training programs</li>
+					<li>Complete daily, weekly, and monthly fitness quests</li>
+					<li>Log training-focus sessions and streaks</li>
+					<li>Unlock achievements and skill-tree perks</li>
 				</ul>
 			</section>
 

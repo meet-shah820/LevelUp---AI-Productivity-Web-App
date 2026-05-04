@@ -24,6 +24,11 @@ type Skill = {
   unlockLevel?: number;
 };
 
+function categoryLabel(cat: string): string {
+  if (cat === "Productivity") return "Conditioning";
+  return cat;
+}
+
 export default function Skills() {
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -81,8 +86,8 @@ export default function Skills() {
         animate={{ opacity: 1, y: 0 }}
         className="space-y-2"
       >
-        <h1 className="text-3xl font-bold text-white">Skill Tree</h1>
-        <p className="text-gray-400">Unlock and upgrade skills to enhance your abilities</p>
+        <h1 className="text-3xl font-bold text-white">Skill tree</h1>
+        <p className="text-gray-400">Unlock perks across strength, conditioning, and training habits</p>
       </motion.div>
 
       {/* Stats Summary */}
@@ -115,7 +120,7 @@ export default function Skills() {
                     <div
                       className={`w-3 h-3 rounded-full bg-gradient-to-r ${colors.from} ${colors.to}`}
                     />
-                    <h3 className="font-medium text-white">{category}</h3>
+                    <h3 className="font-medium text-white">{categoryLabel(category)}</h3>
                     {selectedCategory === category && (
                       <span className="ml-auto text-xs text-indigo-300">Selected</span>
                     )}
@@ -156,7 +161,7 @@ export default function Skills() {
             {rows.map((row, rowIndex) => (
               <div key={rowIndex} className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {row.map((skill, index) => {
-                const colors = categoryColors[skill.category];
+                const colors = categoryColors[skill.category] || categoryColors.Fitness;
 
                 return (
                   <motion.button
@@ -242,9 +247,9 @@ export default function Skills() {
                   {selectedSkill.unlocked ? (
                     <div
                       className={`w-12 h-12 rounded-xl bg-gradient-to-br ${
-                        categoryColors[selectedSkill.category].from
+                        (categoryColors[selectedSkill.category] || categoryColors.Fitness).from
                       } ${
-                        categoryColors[selectedSkill.category].to
+                        (categoryColors[selectedSkill.category] || categoryColors.Fitness).to
                       } flex items-center justify-center shadow-lg`}
                     >
                       <Zap className="w-6 h-6 text-white" />
@@ -256,7 +261,7 @@ export default function Skills() {
                   )}
                   <div>
                     <h3 className="text-xl font-bold">{selectedSkill.name}</h3>
-                    <p className="text-sm text-gray-400">{selectedSkill.category}</p>
+                    <p className="text-sm text-gray-400">{categoryLabel(selectedSkill.category)}</p>
                   </div>
                 </DialogTitle>
                 <DialogDescription className="text-gray-400 pt-4">
@@ -295,8 +300,8 @@ export default function Skills() {
                   <Button
                     disabled
                     className={`w-full bg-gradient-to-r ${
-                      categoryColors[selectedSkill.category].from
-                    } ${categoryColors[selectedSkill.category].to} hover:opacity-80 text-white opacity-60`}
+                      (categoryColors[selectedSkill.category] || categoryColors.Fitness).from
+                    } ${(categoryColors[selectedSkill.category] || categoryColors.Fitness).to} hover:opacity-80 text-white opacity-60`}
                   >
                     Progresses automatically with level
                   </Button>

@@ -132,7 +132,7 @@ export default function Streak() {
 						</div>
 						<div>
 							<h1 className="text-xl font-semibold text-white">Streak Calendar</h1>
-							<p className="text-xs text-gray-400">See your daily momentum and highlight your active streak</p>
+							<p className="text-xs text-gray-400">Training days completed — keep the chain for bonus momentum</p>
 						</div>
 					</div>
 					<div className="hidden sm:flex items-center gap-4 text-xs">

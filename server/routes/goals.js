@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import Goal from "../models/Goal.js";
 import Quest from "../models/Quest.js";
+import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import {
 	generateFullGoalQuestPlan,
@@ -14,6 +15,7 @@ import { calculateLevelFromXp } from "../utils/level.js";
 import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
+import { findRelevantFitnessLibrary } from "../services/fitnessLibraryQuery.js";
 
 const router = express.Router();
 
@@ -98,13 +100,7 @@ router.get("/", async (req, res) => {
 // POST /api/goals
 router.post("/", async (req, res) => {
 	try {
-		const {
-			title,
-			category,
-			rarity: rawRarity,
-			deadline: rawDeadline,
-			description: rawDescription,
-		} = req.body || {};
+		const { title, rarity: rawRarity, deadline: rawDeadline, description: rawDescription } = req.body || {};
 		if (!title) {
 			return res.status(400).json({ error: "title is required" });
 		}
@@ -115,7 +111,7 @@ router.post("/", async (req, res) => {
 				: "common";
 
 		const user = await getUserForReq(req);
-		const goalCategory = category || "general";
+		const goalCategory = "Fitness";
 		const deadline = parseOptionalDate(rawDeadline);
 		const description = String(rawDescription || "").trim().slice(0, 2000);
 
@@ -128,14 +124,60 @@ router.post("/", async (req, res) => {
 			deadline,
 		});
 
+		const userFresh = await User.findById(user._id).lean();
+		const since14 = new Date(Date.now() - 14 * 86400000);
+		const recentCompletedQuests14d = await Quest.countDocuments({
+			userId: user._id,
+			isCompleted: true,
+			updatedAt: { $gte: since14 },
+		});
+		const otherActiveGoals = await Goal.find({
+			userId: user._id,
+			status: "active",
+			_id: { $ne: goal._id },
+		})
+			.select("title")
+			.limit(8)
+			.lean();
+		const userDbContext = {
+			hunterLevel: calculateLevelFromXp(userFresh?.xp ?? user.xp),
+			xp: userFresh?.xp ?? user.xp,
+			streak: userFresh?.streak ?? user.streak,
+			rank: userFresh?.rank ?? user.rank,
+			stats: userFresh?.stats ?? user.stats,
+			recentCompletedQuests14d,
+			otherActiveTrainingGoals: otherActiveGoals.map((g) => g.title).filter(Boolean),
+		};
+
+		const libraryEntries = await findRelevantFitnessLibrary({
+			goalTitle: title,
+			description,
+			limit: 22,
+		});
+		const libraryContext =
+			libraryEntries.length > 0
+				? {
+						entries: libraryEntries,
+						note: "Open-license exercise reference ingested into this app (e.g. wger). Ground quest exercise names and equipment in these rows when relevant.",
+					}
+				: null;
+
 		const userLevel = calculateLevelFromXp(user.xp);
-		const plan = await generateFullGoalQuestPlan({
+		const { plan, fitnessSnapshot } = await generateFullGoalQuestPlan({
 			goalTitle: title,
 			category: goalCategory,
 			currentLevel: userLevel,
 			deadlineDate: deadline,
 			description,
+			userDbContext,
+			libraryContext,
 		});
+
+		const snapshotPatch = { fitnessLibraryMatchCount: libraryEntries.length };
+		if (fitnessSnapshot && typeof fitnessSnapshot === "object") {
+			snapshotPatch.fitnessPlanSnapshot = fitnessSnapshot;
+		}
+		await Goal.findByIdAndUpdate(goal._id, snapshotPatch);
 
 		const months = estimateGoalHorizonMonths(deadline, "");
 		const { daysToSeed, weeksToSeed, monthsToSeed } = computeSeedWindows(

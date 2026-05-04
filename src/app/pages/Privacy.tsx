@@ -61,7 +61,7 @@ export default function Privacy() {
 				<p>We use your data to:</p>
 				<ul>
 					<li>Create and manage your account</li>
-					<li>Provide productivity tracking features</li>
+					<li>Provide fitness training, quests, and habit-tracking features</li>
 					<li>Manage subscriptions and billing</li>
 					<li>Improve the platform</li>
 				</ul>

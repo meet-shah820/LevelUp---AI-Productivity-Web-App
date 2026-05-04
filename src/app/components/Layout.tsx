@@ -139,8 +139,8 @@ export function Layout() {
     return [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Quests", href: "/quests", icon: Target },
-      { name: "Goals", href: "/goals", icon: Flag },
-      { name: "Focus Mode", href: "/focus", icon: Focus },
+      { name: "Training", href: "/goals", icon: Flag },
+      { name: "Training focus", href: "/focus", icon: Focus },
       // Skills is visible for all tiers again
       { name: "Skills", href: "/skills", icon: Zap },
       // Pro+ feature example
@@ -231,9 +231,14 @@ export function Layout() {
                 <Zap className="w-6 h-6 text-white" />
               </div>
               {sidebarOpen && (
-                <span className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                  LevelUp
-                </span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent leading-tight">
+                    LevelUp
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase truncate">
+                    Fitness quest log
+                  </span>
+                </div>
               )}
             </motion.div>
           </div>
@@ -310,9 +315,14 @@ export function Layout() {
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/50">
                       <Zap className="w-6 h-6 text-white" />
                     </div>
-                    <span className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                      LevelUp
-                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent leading-tight">
+                        LevelUp
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase truncate">
+                        Fitness quest log
+                      </span>
+                    </div>
                   </div>
                   <button
                     onClick={() => setMobileMenuOpen(false)}

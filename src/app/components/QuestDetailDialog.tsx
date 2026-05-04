@@ -50,7 +50,7 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
         if (!cancelled) setData(d);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load quest briefing. Try again.");
+        if (!cancelled) setError("Could not load mission briefing. Try again.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -87,19 +87,19 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
               </Badge>
             )}
             {data?.isPenaltyActive && (
-              <Badge className="bg-rose-500/25 text-rose-200 border-rose-500/40">Penalty</Badge>
+              <Badge className="bg-teal-500/25 text-teal-100 border-teal-500/40">Recovery</Badge>
             )}
             {d?.source === "gemini" && !data?.isPenaltyActive && (
               <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-500/40 gap-1">
                 <Sparkles className="w-3 h-3" />
-                System AI
+                Coach engine
               </Badge>
             )}
           </div>
           <DialogDescription className="text-gray-400 text-left space-y-1">
             {data?.isPenaltyActive && data?.originalTitle ? (
-              <span className="block text-rose-300/90 text-sm">
-                Penalty protocol is active. Main quest (locked until complete):{" "}
+              <span className="block text-teal-200/90 text-sm">
+                Recovery quest active. Main mission (locked until complete):{" "}
                 <span className="text-gray-200">{data.originalTitle}</span>
               </span>
             ) : null}
@@ -107,12 +107,12 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
               <span className="flex items-center gap-2 mt-1">
                 <Target className="w-4 h-4 shrink-0 text-purple-400" />
                 <span>
-                  Goal: <span className="text-gray-200">{g.title}</span>
+                  Program: <span className="text-gray-200">{g.title}</span>
                   <span className="text-gray-500"> · {g.category}</span>
                 </span>
               </span>
             ) : (
-              "Full briefing from the System"
+              "Full briefing from the program engine"
             )}
           </DialogDescription>
           {q && (
@@ -136,7 +136,7 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
             {loading && (
               <div className="flex items-center justify-center gap-2 py-12 text-gray-400">
                 <Loader2 className="w-6 h-6 animate-spin" />
-                <span>Consulting the System…</span>
+                <span>Loading briefing…</span>
               </div>
             )}
             {error && !loading && (
@@ -146,14 +146,14 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
               <>
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-400 mb-2">
-                    System directive
+                    Mission summary
                   </h4>
                   <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{d.summary}</p>
                 </section>
                 {d.howTo && String(d.howTo).trim().length > 20 && (
                   <section>
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-400 mb-2">
-                      Execution instructions
+                      How to execute
                     </h4>
                     <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{d.howTo}</p>
                   </section>

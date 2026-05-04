@@ -97,7 +97,7 @@ export default function Auth() {
 			<motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
 				<Card className="bg-gradient-to-br from-[#111827] to-[#1F2937] border-purple-500/30 p-8">
 					<h1 className="text-2xl font-bold text-white mb-2 text-center">LevelUp</h1>
-					<p className="text-gray-400 text-center mb-6">Enter the Gate and begin your ascent</p>
+					<p className="text-gray-400 text-center mb-6">Log training, complete quests, level your hunter rank</p>
 					<div className="flex justify-center gap-2 mb-6">
 						<Button variant={mode === "login" ? "default" : "outline"} className={mode === "login" ? "bg-gradient-to-r from-indigo-500 to-purple-500" : "border-purple-500/30 text-white hover:bg-white/5"} onClick={() => setAuthMode("login")}>
 							Login

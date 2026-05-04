@@ -15,6 +15,8 @@ export type Goal = {
     to: string;
     glow: string;
   };
+  /** Server: ingested exercise-library rows matched when quests were generated (fitness goals). */
+  fitnessLibraryMatchCount?: number;
 };
 
 export type Quest = {

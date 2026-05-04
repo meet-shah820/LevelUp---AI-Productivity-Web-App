@@ -43,16 +43,21 @@ function mapDifficultyFromApi(raw: string | undefined): Quest["difficulty"] {
 }
 
 function mapServerGoals(raw: any[]): Goal[] {
-  return (raw || []).map((g: any) => ({
-    id: normalizeGoalId(g._id ?? g.id),
-    title: g.title,
-    category: (g.category || "Personal") as Goal["category"],
-    rarity: normalizeRarity(g.rarity),
-    description: "",
-    progress: 0,
-    createdAt: g.createdAt,
-    color: categoryColors[(g.category || "Personal") as Goal["category"]],
-  }));
+  return (raw || []).map((g: any) => {
+    const libCount = g.fitnessLibraryMatchCount;
+    return {
+      id: normalizeGoalId(g._id ?? g.id),
+      title: g.title,
+      category: "Fitness" as Goal["category"],
+      rarity: normalizeRarity(g.rarity),
+      description: "",
+      progress: 0,
+      createdAt: g.createdAt,
+      color: categoryColors.Fitness,
+      fitnessLibraryMatchCount:
+        typeof libCount === "number" && Number.isFinite(libCount) ? libCount : undefined,
+    };
+  });
 }
 
 export default function Quests() {
@@ -420,8 +425,8 @@ export default function Quests() {
                     </div>
                   </Badge>
                   {quest.isPenaltyActive && !quest.completed && (
-                    <Badge className="bg-rose-500/20 text-rose-200 border-rose-500/40 text-xs">
-                      Penalty protocol
+                    <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">
+                      Recovery quest
                     </Badge>
                   )}
                   {quest.questTag === "recovery" && !quest.completed && (
@@ -448,7 +453,7 @@ export default function Quests() {
                   {quest.description
                     ? quest.description
                     : MONGO_OBJECT_ID_RE.test(quest.id)
-                      ? "Click the card for full execution briefing from the System."
+                      ? "Open the card for your full workout briefing from the program engine."
                       : "—"}
                 </p>
               </div>
@@ -467,7 +472,7 @@ export default function Quests() {
                   <Target className="w-3 h-3 text-white" />
                 </div>
                 <span className="text-xs text-gray-400">
-                  Contributing to: <span className="text-white">{goal.title}</span>
+                  Program: <span className="text-white">{goal.title}</span>
                 </span>
               </div>
             )}
@@ -529,7 +534,7 @@ export default function Quests() {
         className="space-y-2"
       >
         <h1 className="text-3xl font-bold text-white">Quests</h1>
-        <p className="text-gray-400">Complete quests to gain XP and achieve your goals</p>
+        <p className="text-gray-400">Execute missions, earn XP, and level your training programs</p>
       </motion.div>
 
       {engagement.comebackBoostActive && (
@@ -583,7 +588,7 @@ export default function Quests() {
             <span className="font-semibold">Easy mode</span>
           </div>
           <p className="text-sm text-violet-100/90 flex-1">
-            After your recovery quest, penalties ease in tiers. Each quest you complete dials difficulty back toward
+            After a recovery quest, catch-up protocols ease in tiers. Each quest you finish dials intensity back toward
             normal. Current tier:{" "}
             <span className="font-bold text-white tabular-nums">{engagement.easyModeTier ?? 0}</span> (0 = normal).
           </p>
@@ -708,10 +713,10 @@ export default function Quests() {
                   onValueChange={(v) => setGoalIdFilter(v === "all" ? null : v)}
                 >
                   <SelectTrigger className="w-full sm:w-[min(100%,240px)] bg-[#111827] border-purple-500/30 text-white">
-                    <SelectValue placeholder="Filter by goal" />
+                    <SelectValue placeholder="Filter by program" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#111827] border-purple-500/30 text-white max-h-72">
-                    <SelectItem value="all">All goals</SelectItem>
+                    <SelectItem value="all">All programs</SelectItem>
                     {goals.map((g) => (
                       <SelectItem key={g.id} value={g.id}>
                         {g.title}
@@ -745,12 +750,12 @@ export default function Quests() {
               <Card className="bg-[#111827] border-purple-500/20 p-12 text-center">
                 <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">
-                  {quests.length === 0 ? "No Quests Available" : "No matching quests"}
+                  {quests.length === 0 ? "No quests yet" : "No matching quests"}
                 </h3>
                 <p className="text-gray-400">
                   {quests.length === 0
-                    ? "Add goals to generate personalized quests"
-                    : "Try changing the goal or difficulty filter."}
+                    ? "Create a training program to generate daily, weekly, and monthly quests"
+                    : "Try another program or difficulty filter."}
                 </p>
               </Card>
             ) : (
@@ -769,7 +774,7 @@ export default function Quests() {
 
           <TabsContent value="daily" className="space-y-4">
             {dailyQuests.length === 0 ? (
-              <p className="text-center text-sm text-gray-500 py-8">No daily quests in this view.</p>
+              <p className="text-center text-sm text-gray-500 py-8">No daily missions in this view.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {dailyQuests.map((quest) => (
@@ -786,7 +791,7 @@ export default function Quests() {
 
           <TabsContent value="weekly" className="space-y-4">
             {weeklyQuests.length === 0 ? (
-              <p className="text-center text-sm text-gray-500 py-8">No weekly quests in this view.</p>
+              <p className="text-center text-sm text-gray-500 py-8">No weekly checkpoints in this view.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {weeklyQuests.map((quest) => (
@@ -803,7 +808,7 @@ export default function Quests() {
 
           <TabsContent value="monthly" className="space-y-4">
             {monthlyQuests.length === 0 ? (
-              <p className="text-center text-sm text-gray-500 py-8">No monthly quests in this view.</p>
+              <p className="text-center text-sm text-gray-500 py-8">No monthly milestones in this view.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {monthlyQuests.map((quest) => (

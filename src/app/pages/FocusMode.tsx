@@ -70,16 +70,16 @@ const calculateXP = (minutes: number): number => {
 };
 
 const sessionTypes = {
-  "5min": { duration: 5, name: "Quick Break (5m)", xp: calculateXP(5), color: "from-cyan-500 to-blue-500" },
-  "10min": { duration: 10, name: "Mini Session (10m)", xp: calculateXP(10), color: "from-blue-500 to-indigo-500" },
-  "15min": { duration: 15, name: "Short Break (15m)", xp: calculateXP(15), color: "from-green-500 to-emerald-500" },
-  "20min": { duration: 20, name: "Focus Sprint (20m)", xp: calculateXP(20), color: "from-teal-500 to-cyan-500" },
-  "25min": { duration: 25, name: "Pomodoro (25m)", xp: calculateXP(25), color: "from-red-500 to-orange-500" },
-  "30min": { duration: 30, name: "Half Hour (30m)", xp: calculateXP(30), color: "from-orange-500 to-amber-500" },
-  "45min": { duration: 45, name: "Deep Work (45m)", xp: calculateXP(45), color: "from-purple-500 to-pink-500" },
-  "60min": { duration: 60, name: "Power Hour (60m)", xp: calculateXP(60), color: "from-indigo-500 to-purple-500" },
-  "90min": { duration: 90, name: "Deep Work (90m)", xp: calculateXP(90), color: "from-purple-500 to-fuchsia-500" },
-  "120min": { duration: 120, name: "Ultra Focus (120m)", xp: calculateXP(120), color: "from-pink-500 to-rose-500" },
+  "5min": { duration: 5, name: "Warm-up block (5m)", xp: calculateXP(5), color: "from-cyan-500 to-blue-500" },
+  "10min": { duration: 10, name: "Mobility round (10m)", xp: calculateXP(10), color: "from-blue-500 to-indigo-500" },
+  "15min": { duration: 15, name: "Skill block (15m)", xp: calculateXP(15), color: "from-green-500 to-emerald-500" },
+  "20min": { duration: 20, name: "Training sprint (20m)", xp: calculateXP(20), color: "from-teal-500 to-cyan-500" },
+  "25min": { duration: 25, name: "Work block (25m)", xp: calculateXP(25), color: "from-red-500 to-orange-500" },
+  "30min": { duration: 30, name: "Half-hour session (30m)", xp: calculateXP(30), color: "from-orange-500 to-amber-500" },
+  "45min": { duration: 45, name: "Training block (45m)", xp: calculateXP(45), color: "from-purple-500 to-pink-500" },
+  "60min": { duration: 60, name: "Power hour (60m)", xp: calculateXP(60), color: "from-indigo-500 to-purple-500" },
+  "90min": { duration: 90, name: "Long session (90m)", xp: calculateXP(90), color: "from-purple-500 to-fuchsia-500" },
+  "120min": { duration: 120, name: "Endurance block (120m)", xp: calculateXP(120), color: "from-pink-500 to-rose-500" },
 };
 
 export default function FocusMode() {
@@ -225,8 +225,8 @@ export default function FocusMode() {
         >
           {/* Header */}
           <div className="text-center space-y-2">
-            <h1 className="text-3xl lg:text-4xl font-bold text-white">Focus Mode</h1>
-            <p className="text-gray-400">Stay focused and earn XP</p>
+            <h1 className="text-3xl lg:text-4xl font-bold text-white">Training focus</h1>
+            <p className="text-gray-400">Timed blocks for mobility, study, or deep work — earns XP when you log them</p>
           </div>
 
           {/* Main Timer Card */}
@@ -431,12 +431,12 @@ export default function FocusMode() {
             <FocusStatCard
               value={String(sessionsToday)}
               unit={sessionsToday === 1 ? "session" : "sessions"}
-              label="Sessions Today"
+              label="Sessions today"
             />
             <FocusStatCard
               value={focusDurationFmt.value}
               unit={focusDurationFmt.unit}
-              label="Focus Time"
+              label="Focus time"
             />
             <FocusStatCard
               value={focusXpToday.toLocaleString()}
@@ -454,9 +454,9 @@ export default function FocusMode() {
           className="fixed inset-0 flex items-center justify-center bg-black/70 z-50"
         >
           <div className="px-8 py-6 rounded-2xl border border-purple-500/40 bg-gradient-to-br from-[#111827] to-[#1F2937] text-center shadow-2xl shadow-purple-500/30">
-            <p className="text-purple-400 font-bold text-sm">System Message</p>
-            <h3 className="text-3xl font-extrabold text-white mt-1">Level Up!</h3>
-            <p className="text-gray-400 mt-1">Your focus has increased your level</p>
+            <p className="text-purple-400 font-bold text-sm">System message</p>
+            <h3 className="text-3xl font-extrabold text-white mt-1">Level up!</h3>
+            <p className="text-gray-400 mt-1">Your logged focus pushed you to the next level</p>
           </div>
         </motion.div>
       )}
