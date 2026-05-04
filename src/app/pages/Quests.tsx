@@ -7,7 +7,16 @@ import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Quest, Goal, categoryColors, type GoalRarity } from "../utils/goalSystem";
-import { completeQuest, revertQuest, getQuests, getGoals, RANK_UPDATED_EVENT } from "../utils/api";
+import {
+  completeQuest,
+  revertQuest,
+  getQuests,
+  getGoals,
+  getGoalProgramSchedules,
+  RANK_UPDATED_EVENT,
+  type GoalProgramSchedule,
+} from "../utils/api";
+import { GoalProgramSchedulePanel } from "../components/GoalProgramSchedulePanel";
 import { useSearchParams } from "react-router-dom";
 import { QuestDetailDialog } from "../components/QuestDetailDialog";
 import { formatQuestTitleForDisplay } from "../utils/questDisplay";
@@ -99,6 +108,7 @@ export default function Quests() {
   };
 
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [programSchedules, setProgramSchedules] = useState<GoalProgramSchedule[]>([]);
   const allQuests: Quest[] = [];
   const [quests, setQuests] = useState<Quest[]>(allQuests);
   const [engagement, setEngagement] = useState<{
@@ -160,9 +170,13 @@ export default function Quests() {
       };
     };
     try {
-      const res = await getGoals();
+      const [res, schedRes] = await Promise.all([
+        getGoals(),
+        getGoalProgramSchedules().catch(() => ({ schedules: [] as GoalProgramSchedule[] })),
+      ]);
       if (!mountedRef.current) return;
       setGoals(mapServerGoals(res.goals || []));
+      setProgramSchedules(Array.isArray(schedRes.schedules) ? schedRes.schedules : []);
       const daily = await getQuests("daily");
       if (!mountedRef.current) return;
       setEngagement({
@@ -184,6 +198,7 @@ export default function Quests() {
     } catch {
       if (!mountedRef.current) return;
       setGoals([]);
+      setProgramSchedules([]);
       setQuests(allQuests);
       setEngagement({
         comebackBonusQuestsRemaining: 0,
@@ -527,14 +542,22 @@ export default function Quests() {
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
-      {/* Header */}
+      {/* Header + per-goal program schedules (full timeline, goal-scoped only) */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-2"
+        className="grid gap-4 xl:grid-cols-[minmax(200px,280px)_minmax(0,1fr)] xl:gap-6 xl:items-start"
       >
-        <h1 className="text-3xl font-bold text-white">Quests</h1>
-        <p className="text-gray-400">Execute missions, earn XP, and level your training programs</p>
+        <div className="space-y-2 min-w-0">
+          <h1 className="text-3xl font-bold text-white">Quests</h1>
+          <p className="text-gray-400 text-sm sm:text-base">
+            Execute missions, earn XP, and level your training programs
+          </p>
+        </div>
+        <GoalProgramSchedulePanel
+          schedules={programSchedules}
+          highlightGoalId={goalIdFilter || undefined}
+        />
       </motion.div>
 
       {engagement.comebackBoostActive && (

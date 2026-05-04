@@ -62,6 +62,31 @@ export async function getGoals() {
 	return res.json();
 }
 
+export type GoalProgramScheduleEntry = {
+	id: string;
+	timeframe: "daily" | "weekly" | "monthly";
+	title: string;
+	date: string;
+	isCompleted: boolean;
+	questTag?: string;
+};
+
+export type GoalProgramSchedule = {
+	goalId: string;
+	title: string;
+	description: string;
+	deadline: string | null;
+	createdAt: string | null;
+	programIntent: string | null;
+	entries: GoalProgramScheduleEntry[];
+};
+
+export async function getGoalProgramSchedules(): Promise<{ schedules: GoalProgramSchedule[] }> {
+	const res = await apiFetch("/api/goals/program-schedules");
+	if (!res.ok) throw new Error("Failed to load program schedules");
+	return res.json();
+}
+
 export async function deleteGoal(goalId: string) {
 	const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
 	if (!res.ok) throw new Error("Failed to delete goal");
