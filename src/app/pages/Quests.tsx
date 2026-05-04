@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Check, Clock, Zap, Target, Calendar, Filter, Signal } from "lucide-react";
+import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -12,11 +12,12 @@ import {
   revertQuest,
   getQuests,
   getGoals,
-  getGoalProgramSchedules,
+  getGoalProgramModules,
   RANK_UPDATED_EVENT,
-  type GoalProgramSchedule,
+  type GoalProgramModule,
 } from "../utils/api";
-import { GoalProgramSchedulePanel } from "../components/GoalProgramSchedulePanel";
+import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
+import { cn } from "../components/ui/utils";
 import { useSearchParams } from "react-router-dom";
 import { QuestDetailDialog } from "../components/QuestDetailDialog";
 import { formatQuestTitleForDisplay } from "../utils/questDisplay";
@@ -49,6 +50,13 @@ function mapDifficultyFromApi(raw: string | undefined): Quest["difficulty"] {
   if (s === "easy") return "Easy";
   if (s === "hard") return "Hard";
   return "Medium";
+}
+
+function sortQuestsByDifficultyThenTitle(a: Quest, b: Quest) {
+  const rank = (d: Quest["difficulty"]) => (d === "Easy" ? 0 : d === "Medium" ? 1 : 2);
+  const c = rank(a.difficulty) - rank(b.difficulty);
+  if (c !== 0) return c;
+  return a.title.localeCompare(b.title);
 }
 
 function mapServerGoals(raw: any[]): Goal[] {
@@ -108,7 +116,8 @@ export default function Quests() {
   };
 
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [programSchedules, setProgramSchedules] = useState<GoalProgramSchedule[]>([]);
+  const [programModules, setProgramModules] = useState<GoalProgramModule[]>([]);
+  const [programModulesOpen, setProgramModulesOpen] = useState(true);
   const allQuests: Quest[] = [];
   const [quests, setQuests] = useState<Quest[]>(allQuests);
   const [engagement, setEngagement] = useState<{
@@ -170,13 +179,13 @@ export default function Quests() {
       };
     };
     try {
-      const [res, schedRes] = await Promise.all([
+      const [res, modRes] = await Promise.all([
         getGoals(),
-        getGoalProgramSchedules().catch(() => ({ schedules: [] as GoalProgramSchedule[] })),
+        getGoalProgramModules().catch(() => ({ modules: [] as GoalProgramModule[] })),
       ]);
       if (!mountedRef.current) return;
       setGoals(mapServerGoals(res.goals || []));
-      setProgramSchedules(Array.isArray(schedRes.schedules) ? schedRes.schedules : []);
+      setProgramModules(Array.isArray(modRes.modules) ? modRes.modules : []);
       const daily = await getQuests("daily");
       if (!mountedRef.current) return;
       setEngagement({
@@ -198,7 +207,7 @@ export default function Quests() {
     } catch {
       if (!mountedRef.current) return;
       setGoals([]);
-      setProgramSchedules([]);
+      setProgramModules([]);
       setQuests(allQuests);
       setEngagement({
         comebackBonusQuestsRemaining: 0,
@@ -318,9 +327,10 @@ export default function Quests() {
       ? questsAfterGoal.filter((q) => q.difficulty.toLowerCase() === difficultyFilter)
       : questsAfterGoal;
 
-  const dailyQuests = questsInScope.filter((q) => q.timeframe === "daily");
-  const weeklyQuests = questsInScope.filter((q) => q.timeframe === "weekly");
-  const monthlyQuests = questsInScope.filter((q) => q.timeframe === "monthly");
+  const questsSorted = [...questsInScope].sort(sortQuestsByDifficultyThenTitle);
+  const dailyQuests = questsSorted.filter((q) => q.timeframe === "daily");
+  const weeklyQuests = questsSorted.filter((q) => q.timeframe === "weekly");
+  const monthlyQuests = questsSorted.filter((q) => q.timeframe === "monthly");
 
   const countAll = questsInScope.length;
   const countDaily = dailyQuests.length;
@@ -542,22 +552,35 @@ export default function Quests() {
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
-      {/* Header + per-goal program schedules (full timeline, goal-scoped only) */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="grid gap-4 xl:grid-cols-[minmax(200px,280px)_minmax(0,1fr)] xl:gap-6 xl:items-start"
-      >
-        <div className="space-y-2 min-w-0">
-          <h1 className="text-3xl font-bold text-white">Quests</h1>
-          <p className="text-gray-400 text-sm sm:text-base">
-            Execute missions, earn XP, and level your training programs
-          </p>
+      {/* Title row + expandable program modules (schedule & movement library — not quest instances) */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="space-y-2 min-w-0 flex-1">
+            <h1 className="text-3xl font-bold text-white">Quests</h1>
+            <p className="text-gray-400 text-sm sm:text-base max-w-xl">
+              Execute missions, earn XP, and level your training programs
+            </p>
+          </div>
+          <div className="shrink-0 flex justify-start sm:justify-end w-full sm:w-auto pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setProgramModulesOpen((o) => !o)}
+              className="border-purple-500/40 text-purple-100 hover:bg-purple-500/10 gap-2 h-10"
+              aria-expanded={programModulesOpen}
+            >
+              <BookOpen className="w-4 h-4 shrink-0 text-purple-300" aria-hidden />
+              Program modules
+              <ChevronDown
+                className={cn("w-4 h-4 text-gray-400 transition-transform", programModulesOpen && "rotate-180")}
+                aria-hidden
+              />
+            </Button>
+          </div>
         </div>
-        <GoalProgramSchedulePanel
-          schedules={programSchedules}
-          highlightGoalId={goalIdFilter || undefined}
-        />
+        {programModulesOpen ? (
+          <ProgramModulesPanel modules={programModules} highlightGoalId={goalIdFilter || undefined} />
+        ) : null}
       </motion.div>
 
       {engagement.comebackBoostActive && (
@@ -769,7 +792,7 @@ export default function Quests() {
           </div>
 
           <TabsContent value="all" className="space-y-4">
-            {questsInScope.length === 0 ? (
+            {questsSorted.length === 0 ? (
               <Card className="bg-[#111827] border-purple-500/20 p-12 text-center">
                 <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-white mb-2">
@@ -783,7 +806,7 @@ export default function Quests() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {questsInScope.map((quest) => (
+                {questsSorted.map((quest) => (
                   <QuestCard
                     key={quest.id}
                     quest={quest}

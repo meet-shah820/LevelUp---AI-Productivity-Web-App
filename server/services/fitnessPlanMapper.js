@@ -2,31 +2,6 @@
  * Maps Gemini fitness-program JSON (user schema) into the app's rich quest plan shape.
  */
 
-/** Ensures at least one easy, one medium, and one hard when length >= 3. */
-function ensureDifficultyMix(rows) {
-	if (!rows?.length) return rows || [];
-	const out = rows.map((r) => ({ ...r }));
-	if (out.length < 3) return out;
-	const count = () => ({
-		easy: out.filter((q) => q.difficulty === "easy").length,
-		medium: out.filter((q) => q.difficulty === "medium").length,
-		hard: out.filter((q) => q.difficulty === "hard").length,
-	});
-	let c = count();
-	const tiers = ["easy", "medium", "hard"];
-	for (const need of tiers) {
-		while (c[need] < 1) {
-			const donor = tiers.find((t) => t !== need && c[t] > 0);
-			if (!donor) break;
-			const idx = out.findIndex((q) => q.difficulty === donor);
-			if (idx === -1) break;
-			out[idx] = { ...out[idx], difficulty: need };
-			c = count();
-		}
-	}
-	return out;
-}
-
 function normalizeStatType(raw) {
 	const s = String(raw ?? "")
 		.toLowerCase()
@@ -57,18 +32,23 @@ function formatWorkoutLines(workout) {
 	return workout
 		.map((w) => {
 			const name = String(w?.name || "Exercise").trim();
+			const equip = String(w?.equipment || "").trim();
 			const sets = Number(w?.sets) || 0;
 			const reps = String(w?.reps ?? "").trim() || "?";
 			const rest = Number(w?.rest_seconds) || 0;
 			const cues = String(w?.form_cues || "").trim();
-			const line = `${name}: ${sets} sets × ${reps} reps, rest ${rest}s.`;
-			return cues ? `${line} Cues: ${cues}` : line;
+			const inj = String(w?.injury_prevention || "").trim();
+			const head = equip ? `${name} (${equip})` : name;
+			const line = `${head}: ${sets} sets × ${reps} reps, rest ${rest}s.`;
+			const parts = [cues ? `${line} Cues: ${cues}` : line];
+			if (inj) parts.push(`Injury prevention: ${inj}`);
+			return parts.join(" ");
 		})
 		.join("\n");
 }
 
-function mapDaily(dq, goalTitle) {
-	const day = Number(dq?.day) || 1;
+function mapDaily(dq, goalTitle, indexInArray = 0) {
+	const day = Number(dq?.day) || indexInArray + 1;
 	const titleRaw = String(dq?.title || "").trim();
 	const title =
 		titleRaw.length > 0
@@ -91,13 +71,16 @@ function mapDaily(dq, goalTitle) {
 	const firstName = Array.isArray(dq?.workout) && dq.workout[0]?.name ? String(dq.workout[0].name) : title;
 	const statType = inferStatFromMovement(firstName);
 
+	/** First sessions Easy, then Medium, then Hard — stable by template order (not AI day numbers). */
+	const difficulty = indexInArray < 2 ? "easy" : indexInArray < 6 ? "medium" : "hard";
+
 	return {
 		title,
 		instructions: instructions.slice(0, 12000),
 		completionStandard: completion || `Success criterion: Log session for day ${day} with sets/reps or duration completed as written.`,
 		statType,
 		xp: day % 3 === 0 ? 72 : day % 2 === 0 ? 65 : 58,
-		difficulty: day <= 2 ? "easy" : day <= 5 ? "medium" : "hard",
+		difficulty,
 	};
 }
 
@@ -121,7 +104,7 @@ function mapWeekly(wq, idx) {
 				: success || `Success criterion: Week ${week} criteria logged with numbers (sessions, load, or time).`,
 		statType: week % 4 === 0 ? "vit" : week % 3 === 0 ? "agi" : "str",
 		xp: 200 + week * 15,
-		difficulty: week === 1 ? "easy" : week <= 3 ? "medium" : "hard",
+		difficulty: idx < 1 ? "easy" : idx < 4 ? "medium" : "hard",
 	};
 }
 
@@ -147,7 +130,7 @@ function mapMonthly(mq, idx) {
 					: `Success criterion: Month ${month} milestone documented with test numbers and training log.`,
 		statType: month % 2 === 0 ? "str" : "agi",
 		xp: 400 + month * 40,
-		difficulty: month === 1 ? "medium" : "hard",
+		difficulty: idx < 1 ? "easy" : idx < 3 ? "medium" : "hard",
 	};
 }
 
@@ -167,7 +150,7 @@ export function mapFitnessAiJsonToPlan(raw, goalTitle, counts) {
 	const weeklySrc = Array.isArray(raw?.weekly_quests) ? raw.weekly_quests : Array.isArray(raw?.weeklyQuests) ? raw.weeklyQuests : [];
 	const monthlySrc = Array.isArray(raw?.monthly_quests) ? raw.monthly_quests : Array.isArray(raw?.monthlyQuests) ? raw.monthlyQuests : [];
 
-	let dailyQuests = dailySrc.map((d) => mapDaily(d, goalTitle)).filter((q) => q.title && q.instructions.length >= 40);
+	let dailyQuests = dailySrc.map((d, i) => mapDaily(d, goalTitle, i)).filter((q) => q.title && q.instructions.length >= 40);
 	let weeklyQuests = weeklySrc.map((w, i) => mapWeekly(w, i)).filter((q) => q.title && q.instructions.length >= 40);
 	let monthlyQuests = monthlySrc.map((m, i) => mapMonthly(m, i)).filter((q) => q.title && q.instructions.length >= 40);
 
@@ -189,38 +172,33 @@ export function mapFitnessAiJsonToPlan(raw, goalTitle, counts) {
 		goalRestated: goalFromProfile || String(goalTitle).trim().slice(0, 500),
 		currentPhase: "Foundation",
 		progressionRule,
-		dailyQuests: ensureDifficultyMix(
-			dailyQuests.map((q) => ({
-				title: q.title,
-				statType: normalizeStatType(q.statType),
-				xp: q.xp,
-				difficulty: normalizeDifficulty(q.difficulty),
-				instructions: q.instructions,
-				completionStandard: q.completionStandard,
-			}))
-		),
-		weeklyQuests: ensureDifficultyMix(
-			weeklyQuests.map((q) => ({
-				title: q.title,
-				statType: normalizeStatType(q.statType),
-				xp: q.xp,
-				difficulty: normalizeDifficulty(q.difficulty),
-				instructions: q.instructions,
-				completionStandard: q.completionStandard,
-			}))
-		),
-		monthlyQuests: ensureDifficultyMix(
-			monthlyQuests.map((q) => ({
-				title: q.title,
-				statType: normalizeStatType(q.statType),
-				xp: q.xp,
-				difficulty: normalizeDifficulty(q.difficulty),
-				instructions: q.instructions,
-				completionStandard: q.completionStandard,
-			}))
-		),
+		dailyQuests: dailyQuests.map((q) => ({
+			title: q.title,
+			statType: normalizeStatType(q.statType),
+			xp: q.xp,
+			difficulty: normalizeDifficulty(q.difficulty),
+			instructions: q.instructions,
+			completionStandard: q.completionStandard,
+		})),
+		weeklyQuests: weeklyQuests.map((q) => ({
+			title: q.title,
+			statType: normalizeStatType(q.statType),
+			xp: q.xp,
+			difficulty: normalizeDifficulty(q.difficulty),
+			instructions: q.instructions,
+			completionStandard: q.completionStandard,
+		})),
+		monthlyQuests: monthlyQuests.map((q) => ({
+			title: q.title,
+			statType: normalizeStatType(q.statType),
+			xp: q.xp,
+			difficulty: normalizeDifficulty(q.difficulty),
+			instructions: q.instructions,
+			completionStandard: q.completionStandard,
+		})),
 	};
 
+	const capArr = (arr, max) => (Array.isArray(arr) ? arr.slice(0, max) : []);
 	const fitnessSnapshot = {
 		user_profile: {
 			goal: goalFromProfile || goalTitle,
@@ -228,6 +206,10 @@ export function mapFitnessAiJsonToPlan(raw, goalTitle, counts) {
 			days_per_week: dpw ?? undefined,
 		},
 		recovery_logic: recovery || undefined,
+		/** Raw AI program for Program modules UI (equipment + schedule copy). */
+		daily_quests: capArr(dailySrc, 45),
+		weekly_quests: capArr(weeklySrc, 14),
+		monthly_quests: capArr(monthlySrc, 10),
 	};
 
 	return { plan, fitnessSnapshot };

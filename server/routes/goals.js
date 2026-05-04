@@ -98,72 +98,29 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * GET /api/goals/program-schedules — full quest timeline per active goal (all dates), for schedule UI.
+ * GET /api/goals/program-modules — stored AI program (schedule + equipment/movement detail). No quest instances.
  */
-router.get("/program-schedules", async (req, res) => {
+router.get("/program-modules", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
 		const goals = await Goal.find({ userId: user._id, status: "active" })
 			.select("title description deadline createdAt fitnessPlanSnapshot")
 			.sort({ createdAt: 1 })
 			.lean();
-		if (goals.length === 0) {
-			return res.json({ schedules: [] });
-		}
-		const goalIds = goals.map((g) => g._id);
-		const allQuests = await Quest.find({ userId: user._id, goalId: { $in: goalIds } })
-			.select("title type date isCompleted questTag goalId createdAt")
-			.lean();
-		const byGoal = new Map();
-		for (const g of goals) {
-			byGoal.set(String(g._id), []);
-		}
-		for (const q of allQuests) {
-			const gid = String(q.goalId);
-			if (!byGoal.has(gid)) continue;
-			byGoal.get(gid).push(q);
-		}
-		const typeRank = (t) => {
-			if (t === "daily") return 0;
-			if (t === "weekly") return 1;
-			return 2;
-		};
-		const schedules = goals.map((g) => {
-			const id = String(g._id);
-			const rows = [...(byGoal.get(id) || [])];
-			rows.sort((a, b) => {
-				const da = new Date(a.date || a.createdAt).getTime();
-				const db = new Date(b.date || b.createdAt).getTime();
-				if (da !== db) return da - db;
-				const tr = typeRank(a.type) - typeRank(b.type);
-				if (tr !== 0) return tr;
-				return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-			});
-			const snap = g.fitnessPlanSnapshot && typeof g.fitnessPlanSnapshot === "object" ? g.fitnessPlanSnapshot : null;
-			const profile = snap?.user_profile || snap?.userProfile;
-			const programIntent = String(profile?.goal || "").trim().slice(0, 400) || null;
-			return {
-				goalId: id,
-				title: g.title,
-				description: String(g.description || "").trim().slice(0, 800),
-				deadline: g.deadline ? new Date(g.deadline).toISOString() : null,
-				createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
-				programIntent,
-				entries: rows.map((q) => ({
-					id: String(q._id),
-					timeframe: q.type,
-					title: q.title,
-					date: new Date(q.date || q.createdAt).toISOString(),
-					isCompleted: !!q.isCompleted,
-					questTag: q.questTag || "standard",
-				})),
-			};
-		});
-		return res.json({ schedules });
+		const modules = goals.map((g) => ({
+			goalId: String(g._id),
+			title: g.title,
+			description: String(g.description || "").trim().slice(0, 1200),
+			deadline: g.deadline ? new Date(g.deadline).toISOString() : null,
+			createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
+			fitnessPlanSnapshot:
+				g.fitnessPlanSnapshot && typeof g.fitnessPlanSnapshot === "object" ? g.fitnessPlanSnapshot : null,
+		}));
+		return res.json({ modules });
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error(e);
-		return res.status(500).json({ error: "Failed to load program schedules" });
+		return res.status(500).json({ error: "Failed to load program modules" });
 	}
 });
 

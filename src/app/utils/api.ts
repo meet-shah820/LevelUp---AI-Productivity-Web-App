@@ -62,28 +62,21 @@ export async function getGoals() {
 	return res.json();
 }
 
-export type GoalProgramScheduleEntry = {
-	id: string;
-	timeframe: "daily" | "weekly" | "monthly";
-	title: string;
-	date: string;
-	isCompleted: boolean;
-	questTag?: string;
-};
+/** Stored fitness program snapshot from goal creation (AI). */
+export type FitnessPlanSnapshot = Record<string, unknown> | null;
 
-export type GoalProgramSchedule = {
+export type GoalProgramModule = {
 	goalId: string;
 	title: string;
 	description: string;
 	deadline: string | null;
 	createdAt: string | null;
-	programIntent: string | null;
-	entries: GoalProgramScheduleEntry[];
+	fitnessPlanSnapshot: FitnessPlanSnapshot;
 };
 
-export async function getGoalProgramSchedules(): Promise<{ schedules: GoalProgramSchedule[] }> {
-	const res = await apiFetch("/api/goals/program-schedules");
-	if (!res.ok) throw new Error("Failed to load program schedules");
+export async function getGoalProgramModules(): Promise<{ modules: GoalProgramModule[] }> {
+	const res = await apiFetch("/api/goals/program-modules");
+	if (!res.ok) throw new Error("Failed to load program modules");
 	return res.json();
 }
 

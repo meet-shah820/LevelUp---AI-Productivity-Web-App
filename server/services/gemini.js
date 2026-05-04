@@ -487,6 +487,8 @@ Goal lock: user_profile.goal must paraphrase the PRIMARY TRAINING GOAL from the 
 
 When the user message includes REFERENCE_LIBRARY (exercise rows from this app database), prefer those exercise names, muscle categories, and equipment when they fit the stated goal; otherwise use standard safe gym movements. Daily quests are the user schedule — each must stay actionable and time-bounded.
 
+For every workout[] row: fill "equipment" (e.g. barbell, cable stack, leg press, treadmill, bodyweight). Fill "form_cues" with execution detail. Fill "injury_prevention" with 1–2 short lines (racking, range, bracing, when to stop) — not medical claims.
+
 Missed tasks: recovery_logic must describe Recovery Quests (never shame), reduce volume 20-40%, restore consistency.
 
 Use EXACTLY the array lengths requested in the user message for daily_quests, weekly_quests, monthly_quests.
@@ -500,7 +502,7 @@ Required JSON shape (snake_case):
       "title": "",
       "objective": "",
       "workout": [
-        { "name": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "" }
+        { "name": "", "equipment": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "", "injury_prevention": "" }
       ],
       "completion_rule": "",
       "motivation_tip": ""
@@ -519,7 +521,7 @@ Required JSON shape (snake_case):
       "adjustment_rule": "reduce intensity 20-40%",
       "focus": "consistency restoration",
       "workout": [
-        { "name": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "" }
+        { "name": "", "equipment": "", "sets": 0, "reps": "", "rest_seconds": 0, "form_cues": "", "injury_prevention": "" }
       ]
     }
   }
@@ -1107,7 +1109,7 @@ function buildFitnessSliceUserMessage({
 
 	let schemaHint = "";
 	if (section === "daily") {
-		schemaHint = `Each element: { "day": 1..${sliceCount}, "title": "", "objective": "", "workout": [ { "name", "sets", "reps", "rest_seconds", "form_cues" } ], "completion_rule", "motivation_tip" }. day runs 1 through ${sliceCount} in order.`;
+		schemaHint = `Each element: { "day": 1..${sliceCount}, "title", "objective", "workout": [ { "name", "equipment", "sets", "reps", "rest_seconds", "form_cues", "injury_prevention" } ], "completion_rule", "motivation_tip" }. day runs 1 through ${sliceCount} in order.`;
 	} else if (section === "weekly") {
 		schemaHint = `Each element: { "week": 1..${sliceCount}, "objective", "success_criteria", "expected_adaptation" }. week runs 1 through ${sliceCount}.`;
 	} else {
