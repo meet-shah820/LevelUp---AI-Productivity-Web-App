@@ -16,6 +16,7 @@ import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
 import { findRelevantFitnessLibrary } from "../services/fitnessLibraryQuery.js";
+import { enrichAndPersistGoalProgramModules } from "../services/programModulesEnrichment.js";
 
 const router = express.Router();
 
@@ -103,10 +104,22 @@ router.get("/", async (req, res) => {
 router.get("/program-modules", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
-		const goals = await Goal.find({ userId: user._id, status: "active" })
-			.select("title description deadline createdAt fitnessPlanSnapshot")
+		let goals = await Goal.find({ userId: user._id, status: "active" })
+			.select("title description deadline createdAt fitnessPlanSnapshot programModulesCache")
 			.sort({ createdAt: 1 })
 			.lean();
+		for (const g of goals) {
+			if (!g.programModulesCache?.movements?.length) {
+				try {
+					await enrichAndPersistGoalProgramModules(g._id);
+					const fresh = await Goal.findById(g._id).select("programModulesCache").lean();
+					g.programModulesCache = fresh?.programModulesCache ?? g.programModulesCache;
+				} catch (enr) {
+					// eslint-disable-next-line no-console
+					console.warn("[goals] program modules enrichment:", enr?.message || enr);
+				}
+			}
+		}
 		const modules = goals.map((g) => ({
 			goalId: String(g._id),
 			title: g.title,
@@ -115,6 +128,8 @@ router.get("/program-modules", async (req, res) => {
 			createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
 			fitnessPlanSnapshot:
 				g.fitnessPlanSnapshot && typeof g.fitnessPlanSnapshot === "object" ? g.fitnessPlanSnapshot : null,
+			programModulesCache:
+				g.programModulesCache && typeof g.programModulesCache === "object" ? g.programModulesCache : null,
 		}));
 		return res.json({ modules });
 	} catch (e) {
@@ -307,6 +322,13 @@ router.post("/", async (req, res) => {
 
 		if (questsToInsert.length) {
 			await Quest.insertMany(questsToInsert);
+		}
+
+		try {
+			await enrichAndPersistGoalProgramModules(goal._id);
+		} catch (enr) {
+			// eslint-disable-next-line no-console
+			console.warn("[goals] program modules enrichment on create:", enr?.message || enr);
 		}
 
 		const goalsActive = await Goal.find({ userId: user._id, status: "active" }).lean();

@@ -22,6 +22,8 @@ const GoalSchema = new mongoose.Schema(
 		fitnessPlanSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
 		/** How many fitness-library rows were matched to this goal for AI grounding (0 if library empty). */
 		fitnessLibraryMatchCount: { type: Number, default: 0 },
+		/** Persisted Program modules: movements + equipment detail merged from library/API + AI snapshot. */
+		programModulesCache: { type: mongoose.Schema.Types.Mixed, default: null },
 	},
 	{ timestamps: true }
 );

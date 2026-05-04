@@ -1,7 +1,7 @@
 import { Dumbbell, CalendarRange } from "lucide-react";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
-import type { GoalProgramModule } from "../utils/api";
+import type { GoalProgramModule, ProgramModulesMovement } from "../utils/api";
 
 function shortDate(iso: string | null | undefined) {
 	if (!iso) return "—";
@@ -78,7 +78,11 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 				{modules.map((m) => {
 					const snap = m.fitnessPlanSnapshot as Record<string, unknown> | null;
 					const profile = (snap?.user_profile || snap?.userProfile) as Record<string, unknown> | undefined;
-					const movements = collectMovements(snap);
+					const cache = m.programModulesCache;
+					const useEnriched =
+						Array.isArray(cache?.movements) && (cache?.movements?.length ?? 0) > 0;
+					const enrichedList: ProgramModulesMovement[] = useEnriched ? (cache?.movements ?? []) : [];
+					const snapshotOnlyMovements = !useEnriched ? collectMovements(snap) : [];
 					const isHi = highlightGoalId && m.goalId === highlightGoalId;
 					const daily = Array.isArray(snap?.daily_quests) ? (snap?.daily_quests as unknown[]) : [];
 					const weekly = Array.isArray(snap?.weekly_quests) ? (snap?.weekly_quests as unknown[]) : [];
@@ -200,18 +204,98 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 							</div>
 
 							<div className="border-t border-white/10 pt-4 space-y-3">
-								<div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-									<Dumbbell className="w-4 h-4 text-violet-300" aria-hidden />
-									Movements, equipment & safety
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+										<Dumbbell className="w-4 h-4 text-violet-300" aria-hidden />
+										Movements, equipment & safety
+									</div>
+									{cache?.updatedAt ? (
+										<span className="text-[10px] text-gray-600 tabular-nums">
+											Stored {new Date(cache.updatedAt).toLocaleString()}
+										</span>
+									) : null}
 								</div>
-								{movements.length === 0 ? (
-									<p className="text-sm text-gray-500">
-										No structured movement rows stored on this program yet. New programs include equipment, form cues, and injury-prevention lines per exercise.
+								{cache?.source === "goal_library_fallback" ? (
+									<p className="text-xs text-amber-100/85 bg-amber-500/10 border border-amber-500/25 rounded-md p-2 leading-relaxed">
+										These exercises were matched from your <strong className="font-medium text-amber-50">local reference library</strong> using your goal text.
+										When the AI program includes daily workout rows, this section merges those names with library + open reference data and saves everything on this goal.
 									</p>
-								) : (
+								) : null}
+								{useEnriched ? (
 									<ul className="space-y-4">
-										{movements.map((mv) => (
-											<li key={`${m.goalId}-${mv.name}`} className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2 text-sm">
+										{enrichedList.map((mv) => (
+											<li
+												key={`${m.goalId}-${mv.name}`}
+												className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2 text-sm"
+											>
+												<div className="flex flex-wrap items-baseline gap-2">
+													<span className="font-medium text-white">{mv.name}</span>
+													{mv.categoryLabel ? (
+														<Badge variant="outline" className="border-slate-500/35 text-slate-200/90 text-[11px]">
+															{mv.categoryLabel}
+														</Badge>
+													) : null}
+												</div>
+												{mv.equipmentLabels && mv.equipmentLabels.length > 0 ? (
+													<div className="flex flex-wrap gap-1.5">
+														{mv.equipmentLabels.map((eq) => (
+															<Badge
+																key={`${mv.name}-${eq}`}
+																variant="outline"
+																className="border-violet-500/35 text-violet-200/90 text-[11px]"
+															>
+																{eq}
+															</Badge>
+														))}
+													</div>
+												) : mv.equipmentSummary ? (
+													<Badge variant="outline" className="border-violet-500/35 text-violet-200/90 text-[11px] w-fit">
+														{mv.equipmentSummary}
+													</Badge>
+												) : null}
+												{mv.description ? (
+													<div>
+														<p className="text-[11px] uppercase text-gray-500 font-medium">Overview</p>
+														<p className="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm">{mv.description}</p>
+													</div>
+												) : null}
+												{mv.form_cues ? (
+													<div>
+														<p className="text-[11px] uppercase text-gray-500 font-medium">Form & execution</p>
+														<p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{mv.form_cues}</p>
+													</div>
+												) : null}
+												{mv.injury_prevention ? (
+													<div>
+														<p className="text-[11px] uppercase text-gray-500 font-medium">Safety / injury prevention</p>
+														<p className="text-gray-400 leading-relaxed whitespace-pre-wrap">{mv.injury_prevention}</p>
+													</div>
+												) : null}
+												{mv.referenceUrl ? (
+													<p className="text-[11px] pt-1">
+														<a
+															href={mv.referenceUrl}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+														>
+															Reference{mv.referenceSource ? ` (${mv.referenceSource})` : ""}
+														</a>
+														{mv.licenseShort ? (
+															<span className="text-gray-600"> · {mv.licenseShort}</span>
+														) : null}
+													</p>
+												) : null}
+											</li>
+										))}
+									</ul>
+								) : snapshotOnlyMovements.length > 0 ? (
+									<ul className="space-y-4">
+										{snapshotOnlyMovements.map((mv) => (
+											<li
+												key={`${m.goalId}-${mv.name}`}
+												className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2 text-sm"
+											>
 												<div className="flex flex-wrap items-baseline gap-2">
 													<span className="font-medium text-white">{mv.name}</span>
 													{mv.equipment ? (
@@ -235,6 +319,12 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 											</li>
 										))}
 									</ul>
+								) : (
+									<p className="text-sm text-gray-500 leading-relaxed">
+										No exercise detail saved yet. Open Program modules again after the server merges library data, or run{" "}
+										<code className="text-gray-400 bg-white/5 px-1 rounded">npm run ingest:fitness</code> to load open exercise
+										reference data into your database, then reload this page.
+									</p>
 								)}
 							</div>
 						</div>

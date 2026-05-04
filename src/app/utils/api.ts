@@ -65,6 +65,28 @@ export async function getGoals() {
 /** Stored fitness program snapshot from goal creation (AI). */
 export type FitnessPlanSnapshot = Record<string, unknown> | null;
 
+export type ProgramModulesMovement = {
+	name: string;
+	equipmentSummary?: string;
+	equipmentLabels?: string[];
+	description?: string;
+	form_cues?: string;
+	injury_prevention?: string;
+	referenceSource?: string | null;
+	referenceUrl?: string | null;
+	licenseShort?: string | null;
+	categoryLabel?: string;
+	fromGoalContextFallback?: boolean;
+};
+
+export type ProgramModulesCachePayload = {
+	version?: number;
+	updatedAt?: string;
+	/** snapshot = from AI workout names; goal_library_fallback = goal text + library search */
+	source?: string;
+	movements: ProgramModulesMovement[];
+};
+
 export type GoalProgramModule = {
 	goalId: string;
 	title: string;
@@ -72,6 +94,8 @@ export type GoalProgramModule = {
 	deadline: string | null;
 	createdAt: string | null;
 	fitnessPlanSnapshot: FitnessPlanSnapshot;
+	/** Persisted merged reference + AI content for Program modules */
+	programModulesCache: ProgramModulesCachePayload | null;
 };
 
 export async function getGoalProgramModules(): Promise<{ modules: GoalProgramModule[] }> {
