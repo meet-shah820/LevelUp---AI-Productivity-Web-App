@@ -648,6 +648,15 @@ export default function Goals() {
                 type="date"
                 value={formData.deadline}
                 onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                onClick={(e) => {
+                  // Ensure clicking anywhere in the field opens the date picker (Chrome/Edge support).
+                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                  el.showPicker?.();
+                }}
+                onFocus={(e) => {
+                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                  el.showPicker?.();
+                }}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white"
               />
             </div>

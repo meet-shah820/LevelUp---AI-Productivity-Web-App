@@ -43,6 +43,28 @@ const router = express.Router();
 /** XP granted once when every quest in that timeframe window for the user is completed. */
 const TIMEFRAME_SET_BONUS_XP = { daily: 150, weekly: 400, monthly: 900 };
 
+function markAllExerciseProgressComplete({ questDoc, goalLean }) {
+	const steps = Array.isArray(questDoc.briefing?.steps) ? questDoc.briefing.steps.map((s) => String(s)) : [];
+	const howToLine = String(questDoc.briefing?.howTo || "").trim();
+	const qPlain = questDoc?.toObject ? questDoc.toObject() : questDoc;
+	const items = buildQuestExerciseItemList(qPlain, goalLean, steps, howToLine);
+	if (!Array.isArray(items) || items.length === 0) return;
+
+	const now = new Date();
+	const prev = Array.isArray(questDoc.exerciseProgress) ? questDoc.exerciseProgress : [];
+	const prevByKey = new Map(prev.map((p) => [p?.key, p]));
+
+	questDoc.exerciseProgress = items.map((it) => {
+		const key = String(it.key);
+		const prior = prevByKey.get(key);
+		return {
+			key,
+			completed: true,
+			completedAt: prior?.completedAt && prior?.completed ? prior.completedAt : now,
+		};
+	});
+}
+
 /**
  * If completing `completedQuest` finishes the full set for its day/week/month, grant bonus XP once.
  * Mutates `user` (xp, level) and saves when a bonus is awarded.
@@ -486,6 +508,12 @@ router.patch("/:id/complete", async (req, res) => {
 		}
 
 		quest.isCompleted = true;
+		try {
+			const goal = quest.goalId ? await Goal.findById(quest.goalId).lean() : null;
+			markAllExerciseProgressComplete({ questDoc: quest, goalLean: goal });
+		} catch {
+			// If checklist derivation fails, still allow quest completion.
+		}
 		await quest.save();
 
 		// Update user stats and xp
