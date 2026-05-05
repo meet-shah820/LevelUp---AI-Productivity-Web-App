@@ -28,7 +28,14 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { Goal, categoryColors, type GoalRarity } from "../utils/goalSystem";
-import { createGoal, deleteGoal, getGoals, getAnalytics, RANK_UPDATED_EVENT } from "../utils/api";
+import {
+  createGoal,
+  deleteGoal,
+  getGoals,
+  getAnalytics,
+  RANK_UPDATED_EVENT,
+  GoalTopicMismatchError,
+} from "../utils/api";
 import { useEffect } from "react";
 
 function normalizeGoalId(raw: unknown): string {
@@ -110,6 +117,7 @@ export default function Goals() {
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const pendingDeleteIdRef = useRef<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [goalTopicError, setGoalTopicError] = useState<{ message: string; suggestions: string[] } | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     category: "Fitness" as Goal["category"],
@@ -119,6 +127,7 @@ export default function Goals() {
   });
 
   const handleAddGoal = () => {
+    setGoalTopicError(null);
     setEditingGoal(null);
     setFormData({
       title: "",
@@ -131,6 +140,7 @@ export default function Goals() {
   };
 
   const handleEditGoal = (goal: Goal) => {
+    setGoalTopicError(null);
     setEditingGoal(goal);
     setFormData({
       title: goal.title,
@@ -158,6 +168,7 @@ export default function Goals() {
       ));
     } else {
       // Create new goal
+      setGoalTopicError(null);
       try {
         await createGoal({
           title: formData.title,
@@ -169,7 +180,20 @@ export default function Goals() {
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
-      } catch {
+        setDialogOpen(false);
+        setFormData({
+          title: "",
+          category: "Fitness",
+          rarity: "common",
+          description: "",
+          deadline: "",
+        });
+        return;
+      } catch (e) {
+        if (e instanceof GoalTopicMismatchError) {
+          setGoalTopicError({ message: e.message, suggestions: e.suggestions });
+          return;
+        }
         // fallback to local add if backend unavailable
         const newGoal: Goal = {
           id: Date.now().toString(),
@@ -484,7 +508,13 @@ export default function Goals() {
       </AlertDialog>
 
       {/* Add/Edit training program dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setGoalTopicError(null);
+        }}
+      >
         <DialogContent className="bg-[#111827] border-purple-500/30 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>{editingGoal ? "Edit program" : "New program"}</DialogTitle>
@@ -495,13 +525,33 @@ export default function Goals() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {goalTopicError ? (
+              <div
+                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm space-y-2"
+                role="alert"
+              >
+                <p className="text-amber-100 font-medium leading-relaxed">{goalTopicError.message}</p>
+                <p className="text-xs text-gray-400">This app is built for training and exercise goals. Try one of these instead:</p>
+                <ul className="list-disc list-inside space-y-1.5 text-gray-300 text-sm pl-0.5">
+                  {goalTopicError.suggestions.map((s) => (
+                    <li key={s} className="leading-snug">
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="title">Program title</Label>
               <Input
                 id="title"
                 placeholder="e.g., Add 40 lb to squat in 12 weeks"
                 value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                onChange={(e) => {
+                  setGoalTopicError(null);
+                  setFormData({ ...formData, title: e.target.value });
+                }}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white"
               />
             </div>

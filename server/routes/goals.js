@@ -21,6 +21,7 @@ import {
 	PROGRAM_MODULES_CACHE_VERSION,
 } from "../services/programModulesEnrichment.js";
 import { computeCurrentRotationMovementRows } from "../services/programModulesRotation.js";
+import { assessGoalFitnessRelevance } from "../services/goalTopicGate.js";
 
 const router = express.Router();
 
@@ -185,6 +186,15 @@ router.post("/", async (req, res) => {
 		const goalCategory = "Fitness";
 		const deadline = parseOptionalDate(rawDeadline);
 		const description = String(rawDescription || "").trim().slice(0, 2000);
+
+		const topicCheck = await assessGoalFitnessRelevance(String(title), description);
+		if (!topicCheck.ok) {
+			return res.status(422).json({
+				error: "goal_topic_mismatch",
+				message: topicCheck.message,
+				suggestions: topicCheck.suggestions,
+			});
+		}
 
 		const goal = await Goal.create({
 			userId: user._id,

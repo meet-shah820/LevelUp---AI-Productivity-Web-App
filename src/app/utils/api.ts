@@ -39,6 +39,17 @@ export async function getDashboard() {
 	return res.json();
 }
 
+export class GoalTopicMismatchError extends Error {
+	readonly code = "goal_topic_mismatch" as const;
+	constructor(
+		message: string,
+		public readonly suggestions: string[]
+	) {
+		super(message);
+		this.name = "GoalTopicMismatchError";
+	}
+}
+
 export async function createGoal(payload: {
 	title: string;
 	category?: string;
@@ -52,8 +63,23 @@ export async function createGoal(payload: {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Failed to create goal");
-	return res.json();
+	const body = (await res.json().catch(() => ({}))) as {
+		error?: string;
+		message?: string;
+		suggestions?: string[];
+	};
+	if (!res.ok) {
+		if (res.status === 422 && body.error === "goal_topic_mismatch") {
+			throw new GoalTopicMismatchError(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "This goal isn’t a fitness or training topic this app supports.",
+				Array.isArray(body.suggestions) ? body.suggestions : []
+			);
+		}
+		throw new Error(typeof body.error === "string" ? body.error : "Failed to create goal");
+	}
+	return body;
 }
 
 export async function getGoals() {

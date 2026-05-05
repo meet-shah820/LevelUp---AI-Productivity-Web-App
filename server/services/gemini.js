@@ -1605,3 +1605,45 @@ Reply with ONLY valid JSON (no markdown): {"rank":"X"} where X is one of E,D,C,B
 	}
 }
 
+/**
+ * One-shot classifier: is this goal about fitness / training / conditioning?
+ * Returns permissive default when API unavailable or parse fails.
+ */
+export async function classifyGoalAsFitnessTraining(title, description) {
+	const t = String(title || "").trim();
+	const d = String(description || "").trim();
+	if (!genAI) {
+		return { fitnessRelated: true, reason: "", source: "no_api" };
+	}
+	const model = genAI.getGenerativeModel({
+		model: "gemini-1.5-flash",
+		generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
+	});
+	const prompt = `You gate goals for a fitness-only training app (workouts, gym, running, sports conditioning, strength, cardio, mobility, body composition via exercise, athletic nutrition).
+
+IN SCOPE examples: lose fat for summer with lifting; run 10K; squat 315; gain muscle; rehab knee for soccer; meal prep for gym cuts.
+
+OUT OF SCOPE: investing, studying unrelated subjects, career-only, relationships, generic productivity, hobbies with no physical training (chess, piano), mental health without exercise.
+
+Title: ${JSON.stringify(t)}
+Notes: ${JSON.stringify(d)}
+
+Reply ONLY compact JSON (no markdown): {"fitnessRelated":true|false,"reason":"max 140 chars, plain English why false; empty if true"}`;
+
+	try {
+		const result = await model.generateContent(prompt);
+		const text = result.response.text();
+		const start = text.indexOf("{");
+		const end = text.lastIndexOf("}");
+		if (start === -1 || end === -1) return { fitnessRelated: true, reason: "", source: "parse_fail" };
+		const parsed = JSON.parse(text.slice(start, end + 1));
+		const fitnessRelated = !!parsed.fitnessRelated;
+		const reason = String(parsed.reason || "").trim().slice(0, 280);
+		return { fitnessRelated, reason, source: "gemini" };
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.warn("[gemini] fitness classify:", e?.message || e);
+		return { fitnessRelated: true, reason: "", source: "error" };
+	}
+}
+
