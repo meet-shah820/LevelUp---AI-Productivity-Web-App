@@ -9,6 +9,7 @@ import {
 	CalendarDays,
 	Target,
 	Sun,
+	ChevronDown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card } from "./ui/card";
@@ -20,7 +21,10 @@ import {
 	DialogTitle,
 	DialogDescription,
 } from "./ui/dialog";
+import type { ReactNode } from "react";
 import type { GoalProgramModule, ProgramModulesMovement } from "../utils/api";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { cn } from "./ui/utils";
 
 function shortDate(iso: string | null | undefined) {
 	if (!iso) return "—";
@@ -92,6 +96,38 @@ const SCHEDULE_ICONS: Record<"monthly" | "weekly" | "daily", LucideIcon> = {
 	weekly: Target,
 	daily: Sun,
 };
+
+function ProgramModulesCollapsibleSection({
+	title,
+	subtitle,
+	titleClassName,
+	children,
+}: {
+	title: string;
+	subtitle?: string;
+	titleClassName?: string;
+	children: ReactNode;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border border-white/10 bg-black/15 overflow-hidden">
+			<CollapsibleTrigger
+				type="button"
+				className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-lg"
+			>
+				<div className="min-w-0 space-y-1 pr-2">
+					<p className={cn("text-[11px] font-semibold uppercase tracking-wide", titleClassName)}>{title}</p>
+					{subtitle ? <p className="text-xs text-gray-500 leading-relaxed">{subtitle}</p> : null}
+				</div>
+				<ChevronDown
+					className={cn("h-4 w-4 shrink-0 text-gray-400 transition-transform mt-0.5", open && "rotate-180")}
+					aria-hidden
+				/>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="border-t border-white/5 px-3 pb-3 pt-3">{children}</CollapsibleContent>
+		</Collapsible>
+	);
+}
 
 function MovementDetailBody({ mv }: { mv: ProgramModulesMovement }) {
 	return (
@@ -449,15 +485,11 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 										</p>
 									) : null}
 
-									<div className="space-y-3">
-										<div>
-											<p className="text-[11px] font-semibold uppercase tracking-wide text-teal-400/90">
-												Current rotation (today + rolling week & month)
-											</p>
-											<p className="text-xs text-gray-500 leading-relaxed mt-1">
-												Tap a tile for equipment, form cues, and safety detail for active quests.
-											</p>
-										</div>
+									<ProgramModulesCollapsibleSection
+										title="Current rotation (today + rolling week & month)"
+										subtitle="Tap a tile for equipment, form cues, and safety detail for active quests."
+										titleClassName="text-teal-400/90"
+									>
 										{useEnriched && rotationList.length > 0 ? (
 											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 												{rotationList.map((mv) => {
@@ -478,21 +510,23 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 											</div>
 										) : useEnriched && enrichedList.length > 0 ? (
 											<p className="text-sm text-gray-500 italic leading-relaxed">
-												No movements matched the current quest window yet. Check the full program grid below.
+												No movements matched the current quest window yet. Expand full program below when available.
 											</p>
 										) : !useEnriched && snapshotOnlyMovements.length > 0 ? (
 											<p className="text-sm text-gray-500 italic leading-relaxed">
 												Enriched tiles appear after the server saves merged movements. Snapshot exercises are in the full program
 												section below.
 											</p>
-										) : null}
-									</div>
+										) : (
+											<p className="text-sm text-gray-500 italic leading-relaxed">No rotation tiles for this goal yet.</p>
+										)}
+									</ProgramModulesCollapsibleSection>
 
-									<div className="space-y-3 pt-1 border-t border-white/5">
-										<div>
-											<p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">Full program (entire goal)</p>
-											<p className="text-xs text-gray-500 leading-relaxed mt-1">Every exercise and activity planned for this goal.</p>
-										</div>
+									<ProgramModulesCollapsibleSection
+										title="Full program (entire goal)"
+										subtitle="Every exercise and activity planned for this goal."
+										titleClassName="text-violet-300/90"
+									>
 										{useEnriched && enrichedList.length > 0 ? (
 											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 												{enrichedList.map((mv) => {
@@ -536,7 +570,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 												then reload.
 											</p>
 										)}
-									</div>
+									</ProgramModulesCollapsibleSection>
 								</div>
 							</div>
 						);

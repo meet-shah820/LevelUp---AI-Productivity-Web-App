@@ -117,7 +117,7 @@ export default function Quests() {
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [programModules, setProgramModules] = useState<GoalProgramModule[]>([]);
-  const [programModulesOpen, setProgramModulesOpen] = useState(true);
+  const [programModulesOpen, setProgramModulesOpen] = useState(false);
   const allQuests: Quest[] = [];
   const [quests, setQuests] = useState<Quest[]>(allQuests);
   const [engagement, setEngagement] = useState<{
