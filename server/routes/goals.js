@@ -22,8 +22,11 @@ import {
 } from "../services/programModulesEnrichment.js";
 import { computeCurrentRotationMovementRows } from "../services/programModulesRotation.js";
 import { assessGoalFitnessRelevance } from "../services/goalTopicGate.js";
+import { buildAiQuestPlanContext } from "../services/questPlanContext.js";
 
 const router = express.Router();
+
+const REALIGN_QUEST_PLANNER_NOTE = `RE-ALIGNMENT RUN: The app is replacing future incomplete standard quests for this goal. Design fresh daily / weekly / monthly templates that match ONLY the PRIMARY TRAINING GOAL. Use USER CONTEXT — especially recentCompletedQuestTitles — to avoid repeating the same titles while staying goal-specific. Combine database facts with sound programming judgment.`;
 
 const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
 const LEGACY_DIFF_TO_RARITY = {
@@ -75,6 +78,191 @@ function penaltyDoc(tf, q) {
 		steps: p.steps,
 		whatYouImprove: p.whatYouImprove,
 	};
+}
+
+function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new Date()) {
+	const months = estimateGoalHorizonMonths(deadline, "");
+	const { daysToSeed, weeksToSeed, monthsToSeed } = computeSeedWindows(
+		months,
+		plan.dailyQuests.length,
+		plan.weeklyQuests.length,
+		plan.monthlyQuests.length
+	);
+
+	const questsToInsert = [];
+
+	for (let i = 0; i < daysToSeed; i++) {
+		const date = new Date(now);
+		date.setDate(date.getDate() + i);
+		date.setHours(12, 0, 0, 0);
+		for (const q of plan.dailyQuests) {
+			const briefing = buildBriefingPayloadFromRichQuest(q);
+			questsToInsert.push({
+				userId,
+				goalId,
+				title: q.title,
+				xpReward: Math.round(q.xp),
+				statType: q.statType,
+				difficulty: q.difficulty || "medium",
+				isCompleted: false,
+				type: "daily",
+				date,
+				expiresAt: null,
+				isExpired: false,
+				penalty: penaltyDoc("daily", q),
+				briefing: {
+					...briefing,
+					requirements: "",
+				},
+				briefingGeneratedAt: new Date(),
+				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+			});
+		}
+	}
+
+	for (let w = 0; w < weeksToSeed; w++) {
+		const weekDate = new Date(now);
+		weekDate.setDate(weekDate.getDate() + w * 7);
+		weekDate.setHours(12, 0, 0, 0);
+		for (const q of plan.weeklyQuests) {
+			const briefing = buildBriefingPayloadFromRichQuest(q);
+			questsToInsert.push({
+				userId,
+				goalId,
+				title: q.title,
+				xpReward: Math.round(q.xp),
+				statType: q.statType,
+				difficulty: q.difficulty || "medium",
+				isCompleted: false,
+				type: "weekly",
+				date: weekDate,
+				expiresAt: null,
+				isExpired: false,
+				penalty: penaltyDoc("weekly", q),
+				briefing: {
+					...briefing,
+					requirements: "",
+				},
+				briefingGeneratedAt: new Date(),
+				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+			});
+		}
+	}
+
+	for (let m = 0; m < monthsToSeed; m++) {
+		const monthDate = new Date(now);
+		monthDate.setMonth(monthDate.getMonth() + m);
+		monthDate.setDate(1);
+		monthDate.setHours(12, 0, 0, 0);
+		for (const q of plan.monthlyQuests) {
+			const briefing = buildBriefingPayloadFromRichQuest(q);
+			questsToInsert.push({
+				userId,
+				goalId,
+				title: q.title,
+				xpReward: Math.round(q.xp),
+				statType: q.statType,
+				difficulty: q.difficulty || "medium",
+				isCompleted: false,
+				type: "monthly",
+				date: monthDate,
+				expiresAt: null,
+				isExpired: false,
+				penalty: penaltyDoc("monthly", q),
+				briefing: {
+					...briefing,
+					requirements: "",
+				},
+				briefingGeneratedAt: new Date(),
+				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+			});
+		}
+	}
+
+	return questsToInsert;
+}
+
+/**
+ * Regenerate AI plan, replace incomplete quests from today onward, refresh program modules cache.
+ * @param {{ skipTopicGate?: boolean, plannerNote?: string }} options
+ */
+async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
+	const { skipTopicGate = false, plannerNote } = options;
+	const title = goalDoc.title;
+	const description = String(goalDoc.description || "").trim().slice(0, 2000);
+	const deadline = goalDoc.deadline || null;
+
+	if (!skipTopicGate) {
+		const topicCheck = await assessGoalFitnessRelevance(String(title), description);
+		if (!topicCheck.ok) {
+			const err = new Error("goal_topic_mismatch");
+			err.code = "goal_topic_mismatch";
+			err.payload = topicCheck;
+			throw err;
+		}
+	}
+
+	const userFresh = await User.findById(user._id).lean();
+	const userDbContext = await buildAiQuestPlanContext(user._id, {
+		excludeGoalId: goalDoc._id,
+		primaryGoal: { title, description },
+	});
+
+	const libraryEntries = await findRelevantFitnessLibrary({
+		goalTitle: title,
+		description,
+		limit: 22,
+	});
+	const libraryContext =
+		libraryEntries.length > 0
+			? {
+					entries: libraryEntries,
+					note: "Open-license exercise reference ingested into this app (e.g. wger). Ground quest exercise names and equipment in these rows when relevant.",
+				}
+			: null;
+
+	const userLevel = calculateLevelFromXp(userFresh?.xp ?? user.xp ?? 0);
+	const note = typeof plannerNote === "string" && plannerNote.trim() ? plannerNote.trim() : REALIGN_QUEST_PLANNER_NOTE;
+
+	const { plan, fitnessSnapshot } = await generateFullGoalQuestPlan({
+		goalTitle: title,
+		category: "Fitness",
+		currentLevel: userLevel,
+		deadlineDate: deadline,
+		description,
+		userDbContext,
+		libraryContext,
+		plannerNote: note,
+	});
+
+	const snapshotPatch = { fitnessLibraryMatchCount: libraryEntries.length };
+	if (fitnessSnapshot && typeof fitnessSnapshot === "object") {
+		snapshotPatch.fitnessPlanSnapshot = fitnessSnapshot;
+	}
+	await Goal.findByIdAndUpdate(goalDoc._id, snapshotPatch);
+
+	const boundary = new Date();
+	boundary.setHours(0, 0, 0, 0);
+	await Quest.deleteMany({
+		goalId: goalDoc._id,
+		userId: user._id,
+		isCompleted: false,
+		date: { $gte: boundary },
+	});
+
+	const questsToInsert = buildQuestDocumentsFromPlan(user._id, goalDoc._id, plan, deadline);
+	if (questsToInsert.length) {
+		await Quest.insertMany(questsToInsert);
+	}
+
+	try {
+		await enrichAndPersistGoalProgramModules(goalDoc._id);
+	} catch (enr) {
+		// eslint-disable-next-line no-console
+		console.warn("[goals] program modules enrichment on realign:", enr?.message || enr);
+	}
+
+	return { fitnessLibraryMatchCount: libraryEntries.length };
 }
 
 // GET /api/goals — sorted by rarity: common → mythic (easiest → hardest)
@@ -205,30 +393,10 @@ router.post("/", async (req, res) => {
 			deadline,
 		});
 
-		const userFresh = await User.findById(user._id).lean();
-		const since14 = new Date(Date.now() - 14 * 86400000);
-		const recentCompletedQuests14d = await Quest.countDocuments({
-			userId: user._id,
-			isCompleted: true,
-			updatedAt: { $gte: since14 },
+		const userDbContext = await buildAiQuestPlanContext(user._id, {
+			excludeGoalId: goal._id,
+			primaryGoal: { title, description },
 		});
-		const otherActiveGoals = await Goal.find({
-			userId: user._id,
-			status: "active",
-			_id: { $ne: goal._id },
-		})
-			.select("title")
-			.limit(8)
-			.lean();
-		const userDbContext = {
-			hunterLevel: calculateLevelFromXp(userFresh?.xp ?? user.xp),
-			xp: userFresh?.xp ?? user.xp,
-			streak: userFresh?.streak ?? user.streak,
-			rank: userFresh?.rank ?? user.rank,
-			stats: userFresh?.stats ?? user.stats,
-			recentCompletedQuests14d,
-			otherActiveTrainingGoals: otherActiveGoals.map((g) => g.title).filter(Boolean),
-		};
 
 		const libraryEntries = await findRelevantFitnessLibrary({
 			goalTitle: title,
@@ -260,104 +428,7 @@ router.post("/", async (req, res) => {
 		}
 		await Goal.findByIdAndUpdate(goal._id, snapshotPatch);
 
-		const months = estimateGoalHorizonMonths(deadline, "");
-		const { daysToSeed, weeksToSeed, monthsToSeed } = computeSeedWindows(
-			months,
-			plan.dailyQuests.length,
-			plan.weeklyQuests.length,
-			plan.monthlyQuests.length
-		);
-
-		const questsToInsert = [];
-		const now = new Date();
-
-		for (let i = 0; i < daysToSeed; i++) {
-			const date = new Date(now);
-			date.setDate(date.getDate() + i);
-			date.setHours(12, 0, 0, 0);
-			for (const q of plan.dailyQuests) {
-				const briefing = buildBriefingPayloadFromRichQuest(q);
-				questsToInsert.push({
-					userId: user._id,
-					goalId: goal._id,
-					title: q.title,
-					xpReward: Math.round(q.xp),
-					statType: q.statType,
-					difficulty: q.difficulty || "medium",
-					isCompleted: false,
-					type: "daily",
-					date,
-					expiresAt: null,
-					isExpired: false,
-					penalty: penaltyDoc("daily", q),
-					briefing: {
-						...briefing,
-						requirements: "",
-					},
-					briefingGeneratedAt: new Date(),
-					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-				});
-			}
-		}
-
-		for (let w = 0; w < weeksToSeed; w++) {
-			const weekDate = new Date(now);
-			weekDate.setDate(weekDate.getDate() + w * 7);
-			weekDate.setHours(12, 0, 0, 0);
-			for (const q of plan.weeklyQuests) {
-				const briefing = buildBriefingPayloadFromRichQuest(q);
-				questsToInsert.push({
-					userId: user._id,
-					goalId: goal._id,
-					title: q.title,
-					xpReward: Math.round(q.xp),
-					statType: q.statType,
-					difficulty: q.difficulty || "medium",
-					isCompleted: false,
-					type: "weekly",
-					date: weekDate,
-					expiresAt: null,
-					isExpired: false,
-					penalty: penaltyDoc("weekly", q),
-					briefing: {
-						...briefing,
-						requirements: "",
-					},
-					briefingGeneratedAt: new Date(),
-					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-				});
-			}
-		}
-
-		for (let m = 0; m < monthsToSeed; m++) {
-			const monthDate = new Date(now);
-			monthDate.setMonth(monthDate.getMonth() + m);
-			monthDate.setDate(1);
-			monthDate.setHours(12, 0, 0, 0);
-			for (const q of plan.monthlyQuests) {
-				const briefing = buildBriefingPayloadFromRichQuest(q);
-				questsToInsert.push({
-					userId: user._id,
-					goalId: goal._id,
-					title: q.title,
-					xpReward: Math.round(q.xp),
-					statType: q.statType,
-					difficulty: q.difficulty || "medium",
-					isCompleted: false,
-					type: "monthly",
-					date: monthDate,
-					expiresAt: null,
-					isExpired: false,
-					penalty: penaltyDoc("monthly", q),
-					briefing: {
-						...briefing,
-						requirements: "",
-					},
-					briefingGeneratedAt: new Date(),
-					briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-				});
-			}
-		}
+		const questsToInsert = buildQuestDocumentsFromPlan(user._id, goal._id, plan, deadline);
 
 		if (questsToInsert.length) {
 			await Quest.insertMany(questsToInsert);
@@ -384,6 +455,128 @@ router.post("/", async (req, res) => {
 		// eslint-disable-next-line no-console
 		console.error(err);
 		return res.status(500).json({ error: "Failed to create goal" });
+	}
+});
+
+// PATCH /api/goals/:id — persist edits; re-run AI quest plan when title, description, or deadline change (Fitness)
+router.patch("/:id", async (req, res) => {
+	try {
+		const { id } = req.params;
+		if (!mongoose.Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ error: "Invalid goal id" });
+		}
+		const user = await getUserForReq(req);
+		const goal = await Goal.findOne({ _id: id, userId: user._id, status: "active" });
+		if (!goal) {
+			return res.status(404).json({ error: "Goal not found" });
+		}
+
+		const { title: rawTitle, description: rawDescription, deadline: rawDeadline, rarity: rawRarity } =
+			req.body || {};
+
+		const prevTitle = String(goal.title || "").trim();
+		const prevDesc = String(goal.description || "").trim();
+		const prevDeadlineDay =
+			goal.deadline && !Number.isNaN(new Date(goal.deadline).getTime())
+				? new Date(goal.deadline).toISOString().slice(0, 10)
+				: "";
+
+		const mergedTitle = rawTitle != null ? String(rawTitle).trim().slice(0, 500) : prevTitle;
+		if (rawTitle != null && !mergedTitle) {
+			return res.status(400).json({ error: "title cannot be empty" });
+		}
+		const mergedDesc =
+			rawDescription != null ? String(rawDescription).trim().slice(0, 2000) : prevDesc;
+		const mergedDeadline = rawDeadline !== undefined ? parseOptionalDate(rawDeadline) : goal.deadline;
+		const mergedDeadlineDay =
+			mergedDeadline && !Number.isNaN(new Date(mergedDeadline).getTime())
+				? new Date(mergedDeadline).toISOString().slice(0, 10)
+				: "";
+
+		const textWouldChange =
+			mergedTitle !== prevTitle || mergedDesc !== prevDesc || mergedDeadlineDay !== prevDeadlineDay;
+
+		if (textWouldChange && (rawTitle != null || rawDescription != null)) {
+			const topicCheck = await assessGoalFitnessRelevance(mergedTitle, mergedDesc);
+			if (!topicCheck.ok) {
+				return res.status(422).json({
+					error: "goal_topic_mismatch",
+					message: topicCheck.message,
+					suggestions: topicCheck.suggestions,
+				});
+			}
+		}
+
+		if (rawTitle != null) goal.title = mergedTitle;
+		if (rawDescription != null) goal.description = mergedDesc;
+		if (rawDeadline !== undefined) goal.deadline = mergedDeadline;
+		if (rawRarity != null && Object.prototype.hasOwnProperty.call(RARITY_ORDER, String(rawRarity).toLowerCase())) {
+			goal.rarity = String(rawRarity).toLowerCase();
+		}
+
+		await goal.save();
+
+		let realigned = false;
+		if (textWouldChange && String(goal.category || "").toLowerCase() === "fitness") {
+			try {
+				await realignGoalQuestsFromAi(user, goal, { skipTopicGate: true });
+				realigned = true;
+			} catch (e) {
+				if (e?.code === "goal_topic_mismatch") {
+					return res.status(422).json({
+						error: "goal_topic_mismatch",
+						message: e.payload?.message,
+						suggestions: e.payload?.suggestions ?? [],
+					});
+				}
+				throw e;
+			}
+		}
+
+		const fresh = await Goal.findById(goal._id).lean();
+		return res.json({ ok: true, goal: fresh, realigned });
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error(e);
+		return res.status(500).json({ error: "Failed to update goal" });
+	}
+});
+
+// POST /api/goals/:id/refresh-quests — regenerate AI plan + replace incomplete future quests for this goal
+router.post("/:id/refresh-quests", async (req, res) => {
+	try {
+		const { id } = req.params;
+		if (!mongoose.Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ error: "Invalid goal id" });
+		}
+		const user = await getUserForReq(req);
+		const goal = await Goal.findOne({ _id: id, userId: user._id, status: "active" });
+		if (!goal) {
+			return res.status(404).json({ error: "Goal not found" });
+		}
+		if (String(goal.category || "").toLowerCase() !== "fitness") {
+			return res.status(400).json({ error: "Quest refresh applies to fitness goals only" });
+		}
+
+		try {
+			await realignGoalQuestsFromAi(user, goal);
+		} catch (e) {
+			if (e?.code === "goal_topic_mismatch") {
+				return res.status(422).json({
+					error: "goal_topic_mismatch",
+					message: e.payload?.message,
+					suggestions: e.payload?.suggestions ?? [],
+				});
+			}
+			throw e;
+		}
+
+		const fresh = await Goal.findById(goal._id).lean();
+		return res.json({ ok: true, goal: fresh });
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error(e);
+		return res.status(500).json({ error: "Failed to refresh quests" });
 	}
 });
 

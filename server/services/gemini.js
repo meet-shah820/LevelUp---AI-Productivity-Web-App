@@ -485,6 +485,8 @@ Rules: safety first; progressive overload; realistic workload; consistency over 
 
 Goal lock: user_profile.goal must paraphrase the PRIMARY TRAINING GOAL from the user message (same intent and domain). Do not invent a different outcome. Every daily_quest title, objective, and workout must visibly advance that exact goal (e.g. 5k goal → running/conditioning volume; max squat → squat pattern and accessories). Weekly and monthly layers must measure progress toward the same goal.
 
+App data + creativity: when USER CONTEXT (from MongoDB) is present, treat it as factual (level, streak, other active goals, recent completed quest titles). Synthesize a fresh program that is not a copy of those past titles; stay specific to the PRIMARY TRAINING GOAL and avoid recycling generic "full body" weeks unless the goal is general conditioning. If the user message includes a RE-ALIGNMENT or RE-PLAN note, treat it as a new pass: ensure every line matches the current goal and is not left over from an old topic.
+
 When the user message includes REFERENCE_LIBRARY (exercise rows from this app database), prefer those exercise names, muscle categories, and equipment when they fit the stated goal; otherwise use standard safe gym movements. Daily quests are the user schedule — each must stay actionable and time-bounded.
 
 Difficulty spread: the app assigns Easy / Medium / Hard to quest templates in order (about the first quarter Easier, middle half Medium, last quarter Harder). Program earlier daily templates with lighter volume or simpler patterns where appropriate, and ramp specificity or volume toward the end of the daily_quests list so all three tiers feel distinct.
@@ -955,6 +957,7 @@ function buildFitnessPlanUserMessage({
 	libraryContext,
 	strictFix,
 	counts,
+	plannerNote = "",
 }) {
 	const months = estimateHorizonMonths(deadlineDate, targetHorizon);
 	const g = escapeGoalForPrompt(goalTitle);
@@ -968,7 +971,7 @@ function buildFitnessPlanUserMessage({
 		: "";
 	const dbBlock =
 		userDbContext && typeof userDbContext === "object"
-			? `\nUSER CONTEXT (from app database — use to tune volume and recovery; do not contradict safety rules):\n${JSON.stringify(userDbContext).slice(0, 3500)}\n`
+			? `\nUSER CONTEXT (from app database — use to tune volume and recovery; do not contradict safety rules):\n${JSON.stringify(userDbContext).slice(0, 4200)}\n`
 			: "";
 	const libEntries =
 		libraryContext && Array.isArray(libraryContext.entries) && libraryContext.entries.length
@@ -985,6 +988,9 @@ function buildFitnessPlanUserMessage({
 	const fix = strictFix
 		? "\n\nSTRICT FIX: Prior JSON failed app validation. Emit ONLY the required JSON. Fill every array to the exact lengths below. Every daily workout[] must have at least one exercise with sets, reps (or time), rest_seconds, form_cues. weekly_quests need measurable success_criteria. monthly_quests need concrete progress_targets."
 		: "";
+	const noteBlock = String(plannerNote || "").trim()
+		? `\n${String(plannerNote).trim()}\n`
+		: "";
 	return `You are generating ONE adaptive fitness program for this hunter.
 
 Hunter level: ${currentLevel}.
@@ -996,7 +1002,7 @@ PRIMARY TRAINING GOAL (all quests must serve this):
 "${g}"
 ${desc ? `\nAdditional notes from the user: ${desc}` : ""}
 Do not substitute a different goal or generic wellness plan. Tie session design, volume, and tests to this goal only.
-${dbBlock}
+${noteBlock}${dbBlock}
 ${libBlock}
 REQUIRED ARRAY LENGTHS (exactly):
 - daily_quests: exactly ${counts.dailyTarget} objects (day 1..${counts.dailyTarget})
@@ -1074,6 +1080,7 @@ function buildFitnessSliceUserMessage({
 	libraryContext,
 	validationErrors,
 	strictFix,
+	plannerNote = "",
 }) {
 	const key = fitnessPlanSliceKey(section);
 	const g = escapeGoalForPrompt(goalTitle);
@@ -1087,7 +1094,7 @@ function buildFitnessSliceUserMessage({
 		: "";
 	const dbBlock =
 		userDbContext && typeof userDbContext === "object"
-			? `\nUSER CONTEXT (from app database):\n${JSON.stringify(userDbContext).slice(0, 2200)}\n`
+			? `\nUSER CONTEXT (from app database):\n${JSON.stringify(userDbContext).slice(0, 2800)}\n`
 			: "";
 	const libEntries =
 		libraryContext && Array.isArray(libraryContext.entries) && libraryContext.entries.length
@@ -1109,6 +1116,9 @@ function buildFitnessSliceUserMessage({
 	const fix = strictFix
 		? "\n\nSTRICT: Emit ONLY one JSON object. The array must have EXACTLY the requested length. Every daily item needs workout[] with sets, reps (or time), rest_seconds, form_cues."
 		: "";
+	const noteBlock = String(plannerNote || "").trim()
+		? `\n${String(plannerNote).trim()}\n`
+		: "";
 
 	let schemaHint = "";
 	if (section === "daily") {
@@ -1128,7 +1138,7 @@ ${horizonLine}
 PRIMARY TRAINING GOAL (non-negotiable — every line must advance THIS):
 "${g}"
 ${desc ? `\nUser notes: ${desc}` : ""}
-${dbBlock}
+${noteBlock}${dbBlock}
 ${libBlock}
 ${errBlock}
 
@@ -1152,7 +1162,7 @@ function parseFitnessSliceJson(text, key) {
 }
 
 /**
- * @param {{ goalTitle: string, category?: string, currentLevel: number, deadlineDate?: Date|string|null, targetHorizon?: string, description?: string, userDbContext?: Record<string, unknown>|null, libraryContext?: { entries: unknown[], note?: string }|null }} opts
+ * @param {{ goalTitle: string, category?: string, currentLevel: number, deadlineDate?: Date|string|null, targetHorizon?: string, description?: string, userDbContext?: Record<string, unknown>|null, libraryContext?: { entries: unknown[], note?: string }|null, plannerNote?: string }} opts
  * @returns {Promise<{ plan: object, fitnessSnapshot: object|null }>}
  */
 export async function generateFullGoalQuestPlan({
@@ -1164,6 +1174,7 @@ export async function generateFullGoalQuestPlan({
 	description = "",
 	userDbContext = null,
 	libraryContext = null,
+	plannerNote = "",
 }) {
 	const cat = String(category || "Fitness");
 	const months = estimateHorizonMonths(deadlineDate, targetHorizon);
@@ -1206,6 +1217,7 @@ export async function generateFullGoalQuestPlan({
 			libraryContext,
 			strictFix,
 			counts,
+			plannerNote,
 		});
 		const result = await model.generateContent({
 			contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -1265,6 +1277,7 @@ export async function generateFullGoalQuestPlan({
 						libraryContext,
 						validationErrors: lastErrors,
 						strictFix: sAttempt > 0,
+						plannerNote,
 					});
 					const result = await sliceModel.generateContent({
 						contents: [{ role: "user", parts: [{ text: prompt }] }],

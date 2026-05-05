@@ -33,6 +33,7 @@ import {
   deleteGoal,
   getGoals,
   getAnalytics,
+  updateGoal,
   RANK_UPDATED_EVENT,
   GoalTopicMismatchError,
 } from "../utils/api";
@@ -156,16 +157,49 @@ export default function Goals() {
     if (!formData.title) return;
 
     if (editingGoal) {
-      // Update existing goal
-      setGoals(goals.map((g) =>
-        g.id === editingGoal.id
-          ? {
-              ...g,
-              ...formData,
-              color: categoryColors[formData.category],
-            }
-          : g
-      ));
+      const id = normalizeGoalId(editingGoal.id);
+      if (MONGO_OBJECT_ID_RE.test(id)) {
+        setGoalTopicError(null);
+        try {
+          await updateGoal(id, {
+            title: formData.title.trim(),
+            description: formData.description.trim(),
+            deadline: formData.deadline.trim() || undefined,
+            rarity: formData.rarity,
+          });
+          const res = await getGoals();
+          setGoals(mapServerGoals(res.goals));
+          window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+        } catch (e) {
+          if (e instanceof GoalTopicMismatchError) {
+            setGoalTopicError({ message: e.message, suggestions: e.suggestions });
+            return;
+          }
+          setGoals(
+            goals.map((g) =>
+              g.id === editingGoal.id
+                ? {
+                    ...g,
+                    ...formData,
+                    color: categoryColors[formData.category],
+                  }
+                : g
+            )
+          );
+        }
+      } else {
+        setGoals(
+          goals.map((g) =>
+            g.id === editingGoal.id
+              ? {
+                  ...g,
+                  ...formData,
+                  color: categoryColors[formData.category],
+                }
+              : g
+          )
+        );
+      }
     } else {
       // Create new goal
       setGoalTopicError(null);

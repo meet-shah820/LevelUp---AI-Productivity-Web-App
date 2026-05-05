@@ -138,6 +138,65 @@ export async function deleteGoal(goalId: string) {
 	return res.json();
 }
 
+export async function updateGoal(
+	goalId: string,
+	payload: {
+		title?: string;
+		description?: string;
+		deadline?: string;
+		rarity?: string;
+	}
+) {
+	const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	const body = (await res.json().catch(() => ({}))) as {
+		error?: string;
+		message?: string;
+		suggestions?: string[];
+		ok?: boolean;
+		realigned?: boolean;
+	};
+	if (!res.ok) {
+		if (res.status === 422 && body.error === "goal_topic_mismatch") {
+			throw new GoalTopicMismatchError(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "This goal isn’t a fitness or training topic this app supports.",
+				Array.isArray(body.suggestions) ? body.suggestions : []
+			);
+		}
+		throw new Error(typeof body.error === "string" ? body.error : "Failed to update goal");
+	}
+	return body;
+}
+
+/** Regenerate AI quest templates from current DB context + goal text (replaces incomplete future quests). */
+export async function refreshGoalQuests(goalId: string) {
+	const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}/refresh-quests`, {
+		method: "POST",
+	});
+	const body = (await res.json().catch(() => ({}))) as {
+		error?: string;
+		message?: string;
+		suggestions?: string[];
+	};
+	if (!res.ok) {
+		if (res.status === 422 && body.error === "goal_topic_mismatch") {
+			throw new GoalTopicMismatchError(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "This goal isn’t a fitness or training topic this app supports.",
+				Array.isArray(body.suggestions) ? body.suggestions : []
+			);
+		}
+		throw new Error(typeof body.error === "string" ? body.error : "Failed to refresh quests");
+	}
+	return body;
+}
+
 export async function completeQuest(questId: string) {
 	const res = await apiFetch(`/api/quests/${questId}/complete`, { method: "PATCH" });
 	if (!res.ok) throw new Error("Failed to complete quest");
