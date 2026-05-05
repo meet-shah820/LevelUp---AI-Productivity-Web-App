@@ -1313,6 +1313,147 @@ export async function generateFullGoalQuestPlan({
 	return finishFallback();
 }
 
+function fitnessFallbackSupplementalRows(goalTitle, need, existingLower) {
+	const n = Math.min(15, Math.max(0, Math.round(Number(need) || 0)));
+	if (n <= 0) return [];
+	const fb = fallbackRichTemplate(goalTitle, "Fitness");
+	const pool = [...fb.dailyQuests, ...fb.weeklyQuests];
+	const out = [];
+	let round = 0;
+	while (out.length < n && round < 40) {
+		for (const src of pool) {
+			if (out.length >= n) break;
+			let title = String(src.title || "").trim();
+			if (round > 0) title = `${title} · ${round + 1}`;
+			const q = sanitizeRichQuestRow({ ...src, title }, "daily");
+			const low = q.title.toLowerCase();
+			if (!q.title || existingLower.has(low)) continue;
+			const errors = validateRichQuestRow(q, goalTitle, "Fitness", "fb", out.length, {
+				fitnessMode: true,
+			});
+			if (errors.length) continue;
+			existingLower.add(low);
+			out.push(q);
+		}
+		round += 1;
+	}
+	return out;
+}
+
+/**
+ * Extra rich daily-style quest rows when the seeded plan does not yield enough instances.
+ * Uses Gemini when configured; otherwise fitness fallback templates (deduped by title).
+ * @param {{ goalTitle: string, description?: string, count: number, existingTitles?: string[], currentLevel?: number, userDbContext?: Record<string, unknown>|null, libraryContext?: { entries: unknown[], note?: string }|null }} opts
+ * @returns {Promise<Array<{ title: string, instructions: string, completionStandard: string, statType: string, xp: number, difficulty: string }>>}
+ */
+export async function generateSupplementalFitnessRichQuests({
+	goalTitle,
+	description = "",
+	count,
+	existingTitles = [],
+	currentLevel = 1,
+	userDbContext = null,
+	libraryContext = null,
+}) {
+	const cat = "Fitness";
+	const g = escapeGoalForPrompt(String(goalTitle || "").trim());
+	const desc = String(description || "").trim().slice(0, 800);
+	const n = Math.min(15, Math.max(1, Math.round(Number(count) || 1)));
+
+	const existingLower = new Set(
+		existingTitles.map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+	);
+
+	const dbBlock =
+		userDbContext && typeof userDbContext === "object"
+			? `\nUSER_CONTEXT:\n${JSON.stringify(userDbContext).slice(0, 2800)}\n`
+			: "";
+	const libEntries =
+		libraryContext && Array.isArray(libraryContext.entries) && libraryContext.entries.length
+			? libraryContext.entries
+			: [];
+	const libBlock =
+		libEntries.length > 0
+			? `\nREFERENCE_LIBRARY:\n${JSON.stringify(libEntries).slice(0, 4500)}\n`
+			: "";
+
+	const runModel = async (strict) => {
+		if (!genAI) return [];
+		const model = genAI.getGenerativeModel({
+			model: "gemini-1.5-flash",
+			systemInstruction: `You are a strength & conditioning coach. Output ONLY valid JSON (no markdown).
+Return a JSON array only. Each element:
+{"title","instructions","completion_standard","statType","xp","difficulty"}
+- instructions: ≥55 characters, concrete sets/reps/time or distance.
+- completion_standard: measurable proof the user can verify.
+- statType: str | int | agi | vit only.
+- xp: integer 40–120.
+- difficulty: easy | medium | hard.
+Titles must be unique and MUST NOT match any string in EXISTING_TITLES (case-insensitive).
+Every quest must directly support PRIMARY_GOAL.`,
+		});
+		const fix = strict
+			? "\n\nSTRICT: Output a JSON array with EXACTLY the requested length. No extra keys or prose."
+			: "";
+		const prompt = `PRIMARY_GOAL: "${g}"
+User notes: ${desc}
+Hunter level: ${currentLevel}
+TASK: Emit exactly ${n} supplemental daily-style training quests (novel vs EXISTING_TITLES).
+EXISTING_TITLES: ${JSON.stringify(existingTitles.slice(0, 45))}
+${dbBlock}${libBlock}${fix}
+Output ONLY the JSON array.`;
+		const result = await model.generateContent({
+			contents: [{ role: "user", parts: [{ text: prompt }] }],
+			generationConfig: { temperature: strict ? 0.22 : 0.32, topP: 0.88, maxOutputTokens: 6144 },
+		});
+		const text = result.response.text();
+		const start = text.indexOf("[");
+		const end = text.lastIndexOf("]");
+		if (start === -1 || end === -1) return [];
+		const raw = JSON.parse(text.slice(start, end + 1));
+		return Array.isArray(raw) ? raw : [];
+	};
+
+	let parsed = [];
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			parsed = await runModel(attempt > 0);
+			if (parsed.length) break;
+		} catch (e) {
+			// eslint-disable-next-line no-console
+			console.warn("[gemini] supplemental fitness quests:", e?.message || e);
+			parsed = [];
+		}
+	}
+
+	const out = [];
+	for (let i = 0; i < parsed.length && out.length < n; i++) {
+		const row = parsed[i];
+		const normalized = {
+			title: row?.title,
+			instructions: row?.instructions || row?.instruction,
+			completionStandard: row?.completion_standard || row?.completionStandard,
+			statType: row?.statType,
+			xp: row?.xp,
+			difficulty: row?.difficulty,
+		};
+		const q = sanitizeRichQuestRow(normalized, "daily");
+		if (!q.title || !q.instructions) continue;
+		const low = q.title.toLowerCase();
+		if (existingLower.has(low)) continue;
+		const errors = validateRichQuestRow(q, goalTitle, cat, "supp", out.length, { fitnessMode: true });
+		if (errors.length) continue;
+		existingLower.add(low);
+		out.push(q);
+	}
+
+	if (out.length < n) {
+		out.push(...fitnessFallbackSupplementalRows(goalTitle, n - out.length, existingLower));
+	}
+
+	return out.slice(0, n);
+}
+
 /**
  * @param {{ goalTitle: string, currentLevel: number, category?: string, timeframe?: 'daily'|'weekly'|'monthly' }} opts
  */

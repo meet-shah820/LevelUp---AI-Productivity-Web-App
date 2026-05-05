@@ -6,6 +6,7 @@ import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import {
 	generateFullGoalQuestPlan,
+	generateSupplementalFitnessRichQuests,
 	buildBriefingPayloadFromRichQuest,
 	estimateGoalHorizonMonths,
 } from "../services/gemini.js";
@@ -343,6 +344,39 @@ function addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, 
 	}
 }
 
+function trimQuestBatchToMax(questsToInsert) {
+	while (questsToInsert.length > QUEST_TOTAL_MAX) {
+		questsToInsert.pop();
+	}
+}
+
+function pushOneDailyFromRichRow(questsToInsert, q, userId, goalId, now, dayOffset) {
+	const date = new Date(now);
+	date.setDate(date.getDate() + dayOffset);
+	date.setHours(12, 0, 0, 0);
+	const briefing = buildBriefingPayloadFromRichQuest(q);
+	questsToInsert.push({
+		userId,
+		goalId,
+		title: q.title,
+		xpReward: Math.round(q.xp),
+		statType: q.statType,
+		difficulty: q.difficulty || "medium",
+		isCompleted: false,
+		type: "daily",
+		date,
+		expiresAt: null,
+		isExpired: false,
+		penalty: penaltyDoc("daily", q),
+		briefing: {
+			...briefing,
+			requirements: "",
+		},
+		briefingGeneratedAt: new Date(),
+		briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+	});
+}
+
 /** If projected count still falls outside [6,15] or windows could not adjust, pad/trim the built array. */
 function enforceQuestBatchSizeRange(
 	questsToInsert,
@@ -352,13 +386,12 @@ function enforceQuestBatchSizeRange(
 	now,
 	daysToSeed,
 	weeksToSeed,
-	monthsToSeed
+	monthsToSeed,
+	padDayStart = null
 ) {
-	while (questsToInsert.length > QUEST_TOTAL_MAX) {
-		questsToInsert.pop();
-	}
+	trimQuestBatchToMax(questsToInsert);
 
-	let padDay = coerceUInt(daysToSeed);
+	let padDay = coerceUInt(padDayStart != null ? padDayStart : daysToSeed);
 	let padWeek = coerceUInt(weeksToSeed);
 	let padMonth = coerceUInt(monthsToSeed);
 	let guard = 0;
@@ -382,12 +415,17 @@ function enforceQuestBatchSizeRange(
 		break;
 	}
 
-	while (questsToInsert.length > QUEST_TOTAL_MAX) {
-		questsToInsert.pop();
-	}
+	trimQuestBatchToMax(questsToInsert);
 }
 
-function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new Date()) {
+async function buildQuestDocumentsFromPlan(
+	userId,
+	goalId,
+	plan,
+	deadline,
+	supplementCtx = null,
+	now = new Date()
+) {
 	const months = estimateGoalHorizonMonths(deadline, "");
 	let { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
 	({ daysToSeed, weeksToSeed, monthsToSeed } = reconcileWindowsWithTemplateCounts(
@@ -411,6 +449,42 @@ function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new D
 		addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, m);
 	}
 
+	trimQuestBatchToMax(questsToInsert);
+
+	let padDayForEnforce = daysToSeed;
+	if (supplementCtx && questsToInsert.length < QUEST_TOTAL_MIN) {
+		const room = QUEST_TOTAL_MAX - questsToInsert.length;
+		const need = Math.min(QUEST_TOTAL_MIN - questsToInsert.length, Math.max(0, room));
+		if (need > 0) {
+			const existingTitles = questsToInsert.map((q) => String(q.title || ""));
+			let rows = [];
+			try {
+				rows = await generateSupplementalFitnessRichQuests({
+					goalTitle: supplementCtx.goalTitle,
+					description: supplementCtx.description,
+					count: need,
+					existingTitles,
+					currentLevel: supplementCtx.currentLevel,
+					userDbContext: supplementCtx.userDbContext ?? null,
+					libraryContext: supplementCtx.libraryContext ?? null,
+				});
+			} catch (sup) {
+				// eslint-disable-next-line no-console
+				console.warn("[goals] supplemental AI quests:", sup?.message || sup);
+				rows = [];
+			}
+			let off = daysToSeed;
+			for (const row of rows) {
+				if (questsToInsert.length >= QUEST_TOTAL_MIN) break;
+				if (questsToInsert.length >= QUEST_TOTAL_MAX) break;
+				pushOneDailyFromRichRow(questsToInsert, row, userId, goalId, now, off);
+				off += 1;
+			}
+			padDayForEnforce = off;
+		}
+	}
+
+	trimQuestBatchToMax(questsToInsert);
 	enforceQuestBatchSizeRange(
 		questsToInsert,
 		seedPlan,
@@ -419,7 +493,8 @@ function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new D
 		now,
 		daysToSeed,
 		weeksToSeed,
-		monthsToSeed
+		monthsToSeed,
+		padDayForEnforce
 	);
 
 	return questsToInsert;
@@ -493,7 +568,13 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 		date: { $gte: boundary },
 	});
 
-	const questsToInsert = buildQuestDocumentsFromPlan(user._id, goalDoc._id, plan, deadline);
+	const questsToInsert = await buildQuestDocumentsFromPlan(user._id, goalDoc._id, plan, deadline, {
+		goalTitle: title,
+		description,
+		currentLevel: userLevel,
+		userDbContext,
+		libraryContext,
+	});
 	if (questsToInsert.length) {
 		await Quest.insertMany(questsToInsert);
 	}
@@ -671,7 +752,13 @@ router.post("/", async (req, res) => {
 		}
 		await Goal.findByIdAndUpdate(goal._id, snapshotPatch);
 
-		const questsToInsert = buildQuestDocumentsFromPlan(user._id, goal._id, plan, deadline);
+		const questsToInsert = await buildQuestDocumentsFromPlan(user._id, goal._id, plan, deadline, {
+			goalTitle: title,
+			description,
+			currentLevel: userLevel,
+			userDbContext,
+			libraryContext,
+		});
 
 		if (questsToInsert.length) {
 			await Quest.insertMany(questsToInsert);
