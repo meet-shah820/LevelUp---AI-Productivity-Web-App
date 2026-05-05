@@ -57,6 +57,13 @@ export async function createGoal(payload: {
 	/** ISO date string (YYYY-MM-DD) from date input */
 	deadline?: string;
 	description?: string;
+	userProfile?: {
+		level?: "beginner" | "intermediate" | "advanced";
+		availableDaysPerWeek?: number;
+		sessionDurationMinutes?: number;
+		equipment?: string;
+		constraints?: string;
+	};
 }) {
 	const res = await apiFetch("/api/goals", {
 		method: "POST",
@@ -120,6 +127,13 @@ export type GoalProgramModule = {
 	deadline: string | null;
 	createdAt: string | null;
 	fitnessPlanSnapshot: FitnessPlanSnapshot;
+	userProfile?: {
+		level?: "beginner" | "intermediate" | "advanced";
+		availableDaysPerWeek?: number;
+		sessionDurationMinutes?: number;
+		equipment?: string;
+		constraints?: string;
+	} | null;
 	/** Persisted merged reference + AI content for Program modules */
 	programModulesCache: ProgramModulesCachePayload | null;
 	/** Movements tied to today's dailies + current rolling week/month quests */
@@ -145,6 +159,13 @@ export async function updateGoal(
 		description?: string;
 		deadline?: string;
 		rarity?: string;
+		userProfile?: {
+			level?: "beginner" | "intermediate" | "advanced";
+			availableDaysPerWeek?: number;
+			sessionDurationMinutes?: number;
+			equipment?: string;
+			constraints?: string;
+		};
 	}
 ) {
 	const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}`, {

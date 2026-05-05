@@ -5,7 +5,7 @@ import Quest from "../models/Quest.js";
 import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import {
-	generateFullGoalQuestPlan,
+	generateFitnessSystemFromRoadmap,
 	generateSupplementalFitnessRichQuests,
 	buildBriefingPayloadFromRichQuest,
 	estimateGoalHorizonMonths,
@@ -47,6 +47,40 @@ function parseOptionalDate(raw) {
 	if (raw == null || raw === "") return null;
 	const d = new Date(raw);
 	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function normalizeUserProfile(raw) {
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw;
+	const levelRaw = String(r.level || "").toLowerCase().trim();
+	const level =
+		levelRaw === "beginner" || levelRaw === "intermediate" || levelRaw === "advanced"
+			? levelRaw
+			: "beginner";
+	const days = Number(r.availableDaysPerWeek);
+	const duration = Number(r.sessionDurationMinutes);
+	const availableDaysPerWeek =
+		Number.isFinite(days) ? Math.max(1, Math.min(7, Math.round(days))) : 3;
+	const sessionDurationMinutes =
+		Number.isFinite(duration) ? Math.max(10, Math.min(240, Math.round(duration))) : 45;
+	const equipment = String(r.equipment || "").trim().slice(0, 500);
+	const constraints = String(r.constraints || "").trim().slice(0, 1200);
+	return { level, availableDaysPerWeek, sessionDurationMinutes, equipment, constraints };
+}
+
+function buildAiDescriptionWithProfile(description, userProfile) {
+	const desc = String(description || "").trim();
+	if (!userProfile) return desc;
+	const lines = [
+		"USER_PROFILE",
+		`level: ${userProfile.level}`,
+		`available_days_per_week: ${userProfile.availableDaysPerWeek}`,
+		`session_duration_minutes: ${userProfile.sessionDurationMinutes}`,
+		userProfile.equipment ? `equipment: ${userProfile.equipment}` : "",
+		userProfile.constraints ? `constraints: ${userProfile.constraints}` : "",
+	].filter(Boolean);
+	const block = lines.join("\n");
+	return desc ? `${desc}\n\n${block}` : block;
 }
 
 const QUEST_TOTAL_MIN = 6;
@@ -559,10 +593,12 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 	const { skipTopicGate = false, plannerNote } = options;
 	const title = goalDoc.title;
 	const description = String(goalDoc.description || "").trim().slice(0, 2000);
+	const userProfile = goalDoc.userProfile && typeof goalDoc.userProfile === "object" ? goalDoc.userProfile : null;
+	const aiDescription = buildAiDescriptionWithProfile(description, userProfile);
 	const deadline = goalDoc.deadline || null;
 
 	if (!skipTopicGate) {
-		const topicCheck = await assessGoalFitnessRelevance(String(title), description);
+		const topicCheck = await assessGoalFitnessRelevance(String(title), aiDescription);
 		if (!topicCheck.ok) {
 			const err = new Error("goal_topic_mismatch");
 			err.code = "goal_topic_mismatch";
@@ -591,22 +627,19 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 			: null;
 
 	const userLevel = calculateLevelFromXp(userFresh?.xp ?? user.xp ?? 0);
-	const note = typeof plannerNote === "string" && plannerNote.trim() ? plannerNote.trim() : REALIGN_QUEST_PLANNER_NOTE;
-
-	const { plan, fitnessSnapshot } = await generateFullGoalQuestPlan({
+	const { plan, system } = await generateFitnessSystemFromRoadmap({
 		goalTitle: title,
-		category: "Fitness",
 		currentLevel: userLevel,
 		deadlineDate: deadline,
-		description,
+		description: aiDescription,
+		userProfile,
 		userDbContext,
 		libraryContext,
-		plannerNote: note,
 	});
 
 	const snapshotPatch = { fitnessLibraryMatchCount: libraryEntries.length };
-	if (fitnessSnapshot && typeof fitnessSnapshot === "object") {
-		snapshotPatch.fitnessPlanSnapshot = fitnessSnapshot;
+	if (system && typeof system === "object") {
+		snapshotPatch.fitnessPlanSnapshot = system;
 	}
 	await Goal.findByIdAndUpdate(goalDoc._id, snapshotPatch);
 
@@ -673,7 +706,7 @@ router.get("/program-modules", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
 		let goals = await Goal.find({ userId: user._id, status: "active" })
-			.select("title description deadline createdAt fitnessPlanSnapshot programModulesCache")
+			.select("title description deadline createdAt fitnessPlanSnapshot programModulesCache userProfile")
 			.sort({ createdAt: 1 })
 			.lean();
 		for (const g of goals) {
@@ -719,6 +752,7 @@ router.get("/program-modules", async (req, res) => {
 					deadline: g.deadline ? new Date(g.deadline).toISOString() : null,
 					createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
 					fitnessPlanSnapshot: snap,
+					userProfile: g.userProfile && typeof g.userProfile === "object" ? g.userProfile : null,
 					programModulesCache: cache,
 					currentRotationMovements,
 				};
@@ -735,7 +769,13 @@ router.get("/program-modules", async (req, res) => {
 // POST /api/goals
 router.post("/", async (req, res) => {
 	try {
-		const { title, rarity: rawRarity, deadline: rawDeadline, description: rawDescription } = req.body || {};
+		const {
+			title,
+			rarity: rawRarity,
+			deadline: rawDeadline,
+			description: rawDescription,
+			userProfile: rawUserProfile,
+		} = req.body || {};
 		if (!title) {
 			return res.status(400).json({ error: "title is required" });
 		}
@@ -749,8 +789,10 @@ router.post("/", async (req, res) => {
 		const goalCategory = "Fitness";
 		const deadline = parseOptionalDate(rawDeadline);
 		const description = String(rawDescription || "").trim().slice(0, 2000);
+		const userProfile = normalizeUserProfile(rawUserProfile);
+		const aiDescription = buildAiDescriptionWithProfile(description, userProfile);
 
-		const topicCheck = await assessGoalFitnessRelevance(String(title), description);
+		const topicCheck = await assessGoalFitnessRelevance(String(title), aiDescription);
 		if (!topicCheck.ok) {
 			return res.status(422).json({
 				error: "goal_topic_mismatch",
@@ -765,6 +807,7 @@ router.post("/", async (req, res) => {
 			category: goalCategory,
 			rarity,
 			description,
+			userProfile,
 			deadline,
 		});
 
@@ -787,19 +830,19 @@ router.post("/", async (req, res) => {
 				: null;
 
 		const userLevel = calculateLevelFromXp(user.xp);
-		const { plan, fitnessSnapshot } = await generateFullGoalQuestPlan({
+		const { plan, system } = await generateFitnessSystemFromRoadmap({
 			goalTitle: title,
-			category: goalCategory,
 			currentLevel: userLevel,
 			deadlineDate: deadline,
-			description,
+			description: aiDescription,
+			userProfile,
 			userDbContext,
 			libraryContext,
 		});
 
 		const snapshotPatch = { fitnessLibraryMatchCount: libraryEntries.length };
-		if (fitnessSnapshot && typeof fitnessSnapshot === "object") {
-			snapshotPatch.fitnessPlanSnapshot = fitnessSnapshot;
+		if (system && typeof system === "object") {
+			snapshotPatch.fitnessPlanSnapshot = system;
 		}
 		await Goal.findByIdAndUpdate(goal._id, snapshotPatch);
 
@@ -852,11 +895,18 @@ router.patch("/:id", async (req, res) => {
 			return res.status(404).json({ error: "Goal not found" });
 		}
 
-		const { title: rawTitle, description: rawDescription, deadline: rawDeadline, rarity: rawRarity } =
-			req.body || {};
+		const {
+			title: rawTitle,
+			description: rawDescription,
+			deadline: rawDeadline,
+			rarity: rawRarity,
+			userProfile: rawUserProfile,
+		} = req.body || {};
 
 		const prevTitle = String(goal.title || "").trim();
 		const prevDesc = String(goal.description || "").trim();
+		const prevProfile =
+			goal.userProfile && typeof goal.userProfile === "object" ? normalizeUserProfile(goal.userProfile) : null;
 		const prevDeadlineDay =
 			goal.deadline && !Number.isNaN(new Date(goal.deadline).getTime())
 				? new Date(goal.deadline).toISOString().slice(0, 10)
@@ -873,12 +923,21 @@ router.patch("/:id", async (req, res) => {
 			mergedDeadline && !Number.isNaN(new Date(mergedDeadline).getTime())
 				? new Date(mergedDeadline).toISOString().slice(0, 10)
 				: "";
+		const mergedProfile = rawUserProfile !== undefined ? normalizeUserProfile(rawUserProfile) : prevProfile;
+
+		const profileWouldChange =
+			rawUserProfile !== undefined &&
+			JSON.stringify(mergedProfile || {}) !== JSON.stringify(prevProfile || {});
 
 		const textWouldChange =
-			mergedTitle !== prevTitle || mergedDesc !== prevDesc || mergedDeadlineDay !== prevDeadlineDay;
+			mergedTitle !== prevTitle ||
+			mergedDesc !== prevDesc ||
+			mergedDeadlineDay !== prevDeadlineDay ||
+			profileWouldChange;
 
 		if (textWouldChange && (rawTitle != null || rawDescription != null)) {
-			const topicCheck = await assessGoalFitnessRelevance(mergedTitle, mergedDesc);
+			const aiDescription = buildAiDescriptionWithProfile(mergedDesc, mergedProfile);
+			const topicCheck = await assessGoalFitnessRelevance(mergedTitle, aiDescription);
 			if (!topicCheck.ok) {
 				return res.status(422).json({
 					error: "goal_topic_mismatch",
@@ -891,6 +950,7 @@ router.patch("/:id", async (req, res) => {
 		if (rawTitle != null) goal.title = mergedTitle;
 		if (rawDescription != null) goal.description = mergedDesc;
 		if (rawDeadline !== undefined) goal.deadline = mergedDeadline;
+		if (rawUserProfile !== undefined) goal.userProfile = mergedProfile;
 		if (rawRarity != null && Object.prototype.hasOwnProperty.call(RARITY_ORDER, String(rawRarity).toLowerCase())) {
 			goal.rarity = String(rawRarity).toLowerCase();
 		}

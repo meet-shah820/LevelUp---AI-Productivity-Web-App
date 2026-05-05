@@ -27,7 +27,14 @@ import {
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
-import { Goal, categoryColors, type GoalRarity } from "../utils/goalSystem";
+import { Goal, categoryColors, type GoalRarity, type TrainingUserProfile } from "../utils/goalSystem";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import {
   createGoal,
   deleteGoal,
@@ -68,6 +75,25 @@ function mapServerGoals(raw: any[]): Goal[] {
       rarity: normalizeRarity(g.rarity),
       description: typeof g.description === "string" ? g.description : "",
       deadline,
+      userProfile:
+        g.userProfile && typeof g.userProfile === "object"
+          ? {
+              level:
+                g.userProfile.level === "intermediate" || g.userProfile.level === "advanced"
+                  ? g.userProfile.level
+                  : "beginner",
+              availableDaysPerWeek:
+                typeof g.userProfile.availableDaysPerWeek === "number"
+                  ? g.userProfile.availableDaysPerWeek
+                  : 3,
+              sessionDurationMinutes:
+                typeof g.userProfile.sessionDurationMinutes === "number"
+                  ? g.userProfile.sessionDurationMinutes
+                  : 45,
+              equipment: typeof g.userProfile.equipment === "string" ? g.userProfile.equipment : "",
+              constraints: typeof g.userProfile.constraints === "string" ? g.userProfile.constraints : "",
+            }
+          : undefined,
       progress: 0,
       createdAt: g.createdAt,
       color: categoryColors.Fitness,
@@ -119,12 +145,20 @@ export default function Goals() {
   const pendingDeleteIdRef = useRef<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalTopicError, setGoalTopicError] = useState<{ message: string; suggestions: string[] } | null>(null);
+  const defaultUserProfile: TrainingUserProfile = {
+    level: "beginner",
+    availableDaysPerWeek: 3,
+    sessionDurationMinutes: 45,
+    equipment: "",
+    constraints: "",
+  };
   const [formData, setFormData] = useState({
     title: "",
     category: "Fitness" as Goal["category"],
     rarity: "common" as GoalRarity,
     description: "",
     deadline: "",
+    userProfile: defaultUserProfile,
   });
 
   const handleAddGoal = () => {
@@ -136,6 +170,7 @@ export default function Goals() {
       rarity: "common",
       description: "",
       deadline: "",
+      userProfile: defaultUserProfile,
     });
     setDialogOpen(true);
   };
@@ -149,6 +184,7 @@ export default function Goals() {
       rarity: goal.rarity,
       description: goal.description,
       deadline: goal.deadline || "",
+      userProfile: goal.userProfile ?? defaultUserProfile,
     });
     setDialogOpen(true);
   };
@@ -166,6 +202,7 @@ export default function Goals() {
             description: formData.description.trim(),
             deadline: formData.deadline.trim() || undefined,
             rarity: formData.rarity,
+            userProfile: formData.userProfile,
           });
           const res = await getGoals();
           setGoals(mapServerGoals(res.goals));
@@ -210,6 +247,7 @@ export default function Goals() {
           rarity: formData.rarity,
           description: formData.description.trim() || undefined,
           deadline: formData.deadline.trim() || undefined,
+          userProfile: formData.userProfile,
         });
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
@@ -221,6 +259,7 @@ export default function Goals() {
           rarity: "common",
           description: "",
           deadline: "",
+          userProfile: defaultUserProfile,
         });
         return;
       } catch (e) {
@@ -247,6 +286,7 @@ export default function Goals() {
       rarity: "common",
       description: "",
       deadline: "",
+      userProfile: defaultUserProfile,
     });
   };
 
@@ -591,10 +631,10 @@ export default function Goals() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Notes (optional)</Label>
+              <Label htmlFor="description">Description / Notes</Label>
               <Textarea
                 id="description"
-                placeholder="Equipment, injuries to avoid, days per week, experience level…"
+                placeholder="Any context that helps: current PRs, schedule constraints, weak points, preferences…"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white min-h-[80px]"
@@ -610,6 +650,106 @@ export default function Goals() {
                 onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
                 className="bg-[#0B0F1A] border-purple-500/30 text-white"
               />
+            </div>
+
+            <div className="pt-2 border-t border-purple-500/15">
+              <p className="text-sm font-medium text-white mb-3">User Profile</p>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Level</Label>
+                  <Select
+                    value={formData.userProfile.level}
+                    onValueChange={(v) => {
+                      if (v !== "beginner" && v !== "intermediate" && v !== "advanced") return;
+                      setFormData({ ...formData, userProfile: { ...formData.userProfile, level: v } });
+                    }}
+                  >
+                    <SelectTrigger className="bg-[#0B0F1A] border-purple-500/30 text-white">
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#0B0F1A] border-purple-500/30 text-white">
+                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="daysPerWeek">Available days / week</Label>
+                    <Input
+                      id="daysPerWeek"
+                      type="number"
+                      min={1}
+                      max={7}
+                      value={formData.userProfile.availableDaysPerWeek}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const v = Number.isFinite(n) ? Math.max(1, Math.min(7, Math.round(n))) : 3;
+                        setFormData({
+                          ...formData,
+                          userProfile: { ...formData.userProfile, availableDaysPerWeek: v },
+                        });
+                      }}
+                      className="bg-[#0B0F1A] border-purple-500/30 text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="sessionDuration">Session duration (min)</Label>
+                    <Input
+                      id="sessionDuration"
+                      type="number"
+                      min={10}
+                      max={240}
+                      value={formData.userProfile.sessionDurationMinutes}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const v = Number.isFinite(n) ? Math.max(10, Math.min(240, Math.round(n))) : 45;
+                        setFormData({
+                          ...formData,
+                          userProfile: { ...formData.userProfile, sessionDurationMinutes: v },
+                        });
+                      }}
+                      className="bg-[#0B0F1A] border-purple-500/30 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="equipment">Equipment</Label>
+                  <Input
+                    id="equipment"
+                    placeholder="e.g., barbell, dumbbells, bench, pull-up bar, treadmill…"
+                    value={formData.userProfile.equipment}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        userProfile: { ...formData.userProfile, equipment: e.target.value },
+                      })
+                    }
+                    className="bg-[#0B0F1A] border-purple-500/30 text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="constraints">Constraints</Label>
+                  <Textarea
+                    id="constraints"
+                    placeholder="Injuries, limitations, preferences, movements to avoid, schedule constraints…"
+                    value={formData.userProfile.constraints}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        userProfile: { ...formData.userProfile, constraints: e.target.value },
+                      })
+                    }
+                    className="bg-[#0B0F1A] border-purple-500/30 text-white min-h-[80px]"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

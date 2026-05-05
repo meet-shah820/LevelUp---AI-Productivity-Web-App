@@ -7,6 +7,17 @@ const GoalSchema = new mongoose.Schema(
 		category: { type: String, default: "general" },
 		/** Optional notes the user adds in the app (not required for AI). */
 		description: { type: String, default: "" },
+		/**
+		 * Training user profile (used to guide AI quest + program generation).
+		 * Stored on the goal so it can be edited per-program.
+		 */
+		userProfile: {
+			level: { type: String, enum: ["beginner", "intermediate", "advanced"], default: "beginner" },
+			availableDaysPerWeek: { type: Number, default: 3 },
+			sessionDurationMinutes: { type: Number, default: 45 },
+			equipment: { type: String, default: "" },
+			constraints: { type: String, default: "" },
+		},
 		/** Optional calendar deadline — used to size the quest plan. */
 		deadline: { type: Date, default: null },
 		status: { type: String, enum: ["active", "archived"], default: "active" },

@@ -1,5 +1,13 @@
 export type GoalRarity = "common" | "rare" | "epic" | "legendary" | "mythic";
 
+export type TrainingUserProfile = {
+  level: "beginner" | "intermediate" | "advanced";
+  availableDaysPerWeek: number;
+  sessionDurationMinutes: number;
+  equipment: string;
+  constraints: string;
+};
+
 export type Goal = {
   id: string;
   title: string;
@@ -8,6 +16,7 @@ export type Goal = {
   rarity: GoalRarity;
   description: string;
   deadline?: string;
+  userProfile?: TrainingUserProfile;
   progress: number;
   createdAt: string;
   color: {

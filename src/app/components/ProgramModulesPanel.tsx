@@ -271,7 +271,10 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 				<div className="max-h-[min(75vh,720px)] overflow-y-auto p-3 sm:p-4 space-y-6">
 					{modules.map((m) => {
 						const snap = m.fitnessPlanSnapshot as Record<string, unknown> | null;
-						const profile = (snap?.user_profile || snap?.userProfile) as Record<string, unknown> | undefined;
+						const profile =
+							(m.userProfile && typeof m.userProfile === "object"
+								? (m.userProfile as Record<string, unknown>)
+								: ((snap?.user_profile || snap?.userProfile) as Record<string, unknown> | undefined));
 						const cache = m.programModulesCache;
 						const useEnriched =
 							Array.isArray(cache?.movements) && (cache?.movements?.length ?? 0) > 0;
@@ -281,9 +284,23 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 							: [];
 						const snapshotOnlyMovements = !useEnriched ? collectMovements(snap) : [];
 						const isHi = highlightGoalId && m.goalId === highlightGoalId;
-						const daily = Array.isArray(snap?.daily_quests) ? (snap?.daily_quests as unknown[]) : [];
-						const weekly = Array.isArray(snap?.weekly_quests) ? (snap?.weekly_quests as unknown[]) : [];
-						const monthly = Array.isArray(snap?.monthly_quests) ? (snap?.monthly_quests as unknown[]) : [];
+						const legacyDaily = Array.isArray(snap?.daily_quests) ? (snap?.daily_quests as unknown[]) : [];
+						const legacyWeekly = Array.isArray(snap?.weekly_quests) ? (snap?.weekly_quests as unknown[]) : [];
+						const legacyMonthly = Array.isArray(snap?.monthly_quests) ? (snap?.monthly_quests as unknown[]) : [];
+
+						const roadmap = Array.isArray(snap?.roadmap) ? (snap?.roadmap as unknown[]) : [];
+						const monthlyPlan = Array.isArray(snap?.monthly_plan) ? (snap?.monthly_plan as unknown[]) : [];
+						const weeklyPlan = Array.isArray(snap?.weekly_plan) ? (snap?.weekly_plan as unknown[]) : [];
+						const dailyPlan = Array.isArray(snap?.daily_plan) ? (snap?.daily_plan as unknown[]) : [];
+
+						const quests = (snap?.quests as Record<string, unknown> | undefined) || undefined;
+						const questsDaily = Array.isArray(quests?.daily) ? (quests?.daily as unknown[]) : [];
+						const questsWeekly = Array.isArray(quests?.weekly) ? (quests?.weekly as unknown[]) : [];
+						const questsMonthly = Array.isArray(quests?.monthly) ? (quests?.monthly as unknown[]) : [];
+
+						const daily = dailyPlan.length ? dailyPlan : questsDaily.length ? questsDaily : legacyDaily;
+						const weekly = weeklyPlan.length ? weeklyPlan : questsWeekly.length ? questsWeekly : legacyWeekly;
+						const monthly = monthlyPlan.length ? monthlyPlan : questsMonthly.length ? questsMonthly : legacyMonthly;
 						const recovery = snap?.recovery_logic as Record<string, unknown> | undefined;
 
 						return (
@@ -330,6 +347,52 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 								<div className="space-y-4">
 									<p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Schedule overview</p>
 
+									{roadmap.length > 0 ? (
+										<div className="space-y-2">
+											<p className="text-xs text-emerald-300/90 font-medium">Roadmap phases</p>
+											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+												{roadmap.map((row, i) => {
+													const r = row as Record<string, unknown>;
+													const phase = String(r.phase_name || r.name || `Phase ${i + 1}`).trim();
+													const dur = Number(r.duration_weeks);
+													const focus = String(r.focus || "").trim();
+													const miles = Array.isArray(r.milestones) ? r.milestones : [];
+													const body = [
+														dur ? `Duration: ${dur} weeks` : "",
+														focus ? `Focus:\n${focus}` : "",
+														miles.length
+															? `Milestones:\n${miles
+																	.map((x) => `- ${String(x || "").trim()}`)
+																	.filter((x) => x !== "- ")
+																	.slice(0, 12)
+																	.join("\n")}`
+															: "",
+													]
+														.filter(Boolean)
+														.join("\n\n");
+													const idx = tileIndex++;
+													return (
+														<ProgramTile
+															key={`r-${m.goalId}-${i}`}
+															icon={Target}
+															label={phase}
+															sub={focus.slice(0, 72) || undefined}
+															index={idx}
+															onClick={() =>
+																setDetail({
+																	kind: "schedule",
+																	section: "monthly",
+																	title: `${m.title} — ${phase}`,
+																	body: body || phase,
+																})
+															}
+														/>
+													);
+												})}
+											</div>
+										</div>
+									) : null}
+
 									{monthly.length > 0 ? (
 										<div className="space-y-2">
 											<p className="text-xs text-orange-300/90 font-medium">Monthly milestones</p>
@@ -337,11 +400,17 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 												{monthly.map((row, i) => {
 													const r = row as Record<string, unknown>;
 													const mo = Number(r.month) || i + 1;
-													const g = String(r.goal || r.goal_text || "").trim();
+													const g = String(r.goal || r.goal_text || r.expected_outcome || "").trim();
+													const focus = String(r.focus || "").trim();
 													const pt = String(r.progress_targets || "").trim();
 													const cr = String(r.consistency_requirement || "").trim();
 													const title = `Month ${mo}`;
-													const body = [g && `Goal: ${g}`, pt && `Targets: ${pt}`, cr && `Consistency: ${cr}`]
+													const body = [
+														focus && `Focus:\n${focus}`,
+														g && `Outcome: ${g}`,
+														pt && `Targets: ${pt}`,
+														cr && `Consistency: ${cr}`,
+													]
 														.filter(Boolean)
 														.join("\n\n");
 													const idx = tileIndex++;
@@ -374,11 +443,21 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 												{weekly.map((row, i) => {
 													const r = row as Record<string, unknown>;
 													const wk = Number(r.week) || i + 1;
+													const focus = String(r.focus || "").trim();
 													const obj = String(r.objective || "").trim();
+													const wl = String(r.workload || "").trim();
+													const notes = String(r.notes || "").trim();
 													const sc = String(r.success_criteria || "").trim();
 													const ad = String(r.expected_adaptation || "").trim();
 													const title = `Week ${wk}`;
-													const body = [obj && `Objective:\n${obj}`, sc && `Success criteria:\n${sc}`, ad && `Expected adaptation:\n${ad}`]
+													const body = [
+														focus && `Focus:\n${focus}`,
+														wl && `Workload:\n${wl}`,
+														notes && `Notes:\n${notes}`,
+														obj && `Objective:\n${obj}`,
+														sc && `Success criteria:\n${sc}`,
+														ad && `Expected adaptation:\n${ad}`,
+													]
 														.filter(Boolean)
 														.join("\n\n");
 													const idx = tileIndex++;
@@ -412,7 +491,11 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 													const r = row as Record<string, unknown>;
 													const day = Number(r.day) || i + 1;
 													const tit = String(r.title || "").trim();
+													const focus = String(r.focus || "").trim();
 													const objective = String(r.objective || "").trim();
+													const workload = String(r.workload || "").trim();
+													const notes = String(r.notes || "").trim();
+													const desc = String(r.description || "").trim();
 													const wo = r.workout;
 													const woStr = Array.isArray(wo)
 														? (wo as Record<string, unknown>[])
@@ -423,7 +506,11 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 													const title = `Day ${day}`;
 													const body = [
 														tit && `Session: ${tit}`,
+														focus && `Focus:\n${focus}`,
 														objective && `Objective:\n${objective}`,
+														workload && `Workload:\n${workload}`,
+														notes && `Notes:\n${notes}`,
+														desc && `Description:\n${desc}`,
 														woStr && `Exercises: ${woStr}`,
 													]
 														.filter(Boolean)
@@ -434,7 +521,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 															key={`d-${m.goalId}-${i}`}
 															icon={SCHEDULE_ICONS.daily}
 															label={title}
-															sub={tit.slice(0, 72) || "Training session"}
+															sub={(tit || focus).slice(0, 72) || "Training session"}
 															index={idx}
 															onClick={() =>
 																setDetail({

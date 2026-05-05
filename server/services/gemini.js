@@ -1315,6 +1315,398 @@ export async function generateFullGoalQuestPlan({
 	return finishFallback();
 }
 
+/**
+ * Fitness-only: roadmap → plan → library → quests (gamified).
+ * Returns a RichQuest plan compatible with Quest seeding + the full structured system snapshot.
+ *
+ * @param {{
+ *  goalTitle: string,
+ *  currentLevel: number,
+ *  deadlineDate?: Date|string|null,
+ *  description?: string,
+ *  userProfile?: Record<string, unknown>|null,
+ *  userDbContext?: Record<string, unknown>|null,
+ *  libraryContext?: { entries: unknown[], note?: string }|null
+ * }} opts
+ * @returns {Promise<{ plan: any, system: any|null }>}
+ */
+export async function generateFitnessSystemFromRoadmap({
+	goalTitle,
+	currentLevel,
+	deadlineDate = null,
+	description = "",
+	userProfile = null,
+	userDbContext = null,
+	libraryContext = null,
+}) {
+	const cat = "Fitness";
+	const months = estimateHorizonMonths(deadlineDate, "");
+	const counts = computeFitnessPlanCounts(months);
+
+	const fbTemplate = fallbackRichTemplate(goalTitle, cat);
+	const fb = sanitizeAndValidateFullPlan(fbTemplate, goalTitle, cat, { fitnessMode: true });
+	const finishFallback = () => ({ plan: fb.plan, system: null });
+
+	if (!genAI) return finishFallback();
+
+	const ROADMAP_ONLY_PROMPT = `You are an expert fitness coach, behavioral psychologist, and game designer.
+
+Your task is to generate a structured, adaptive, and gamified fitness system.
+
+You MUST follow this EXACT sequence:
+
+STEP 1 — ROADMAP (STRATEGY)
+- Analyze the user's goal, deadline, and profile
+- Create a phased roadmap
+- Each phase must include: phase_name, duration_weeks, focus, milestones
+- DO NOT include exercises here.
+
+STEP 2 — PLAN (STRUCTURE)
+	- Convert the roadmap into: monthly_plan, weekly_plan, and daily_plan
+- Each plan must reflect progression from the roadmap
+- Define workload, intensity, and focus
+- Stay within user constraints (time, days, level)
+- DO NOT assign specific exercises yet.
+
+	Output STRICT JSON ONLY with keys: roadmap, monthly_plan, weekly_plan, daily_plan.`;
+
+	const FULL_SYSTEM_PROMPT = `You are an expert fitness coach, behavioral psychologist, and game designer.
+
+Your task is to generate a structured, adaptive, and gamified fitness system.
+
+You MUST follow this EXACT sequence:
+
+---
+
+## STEP 1 — ROADMAP (STRATEGY)
+
+- Analyze the user's goal, deadline, and profile
+- Create a phased roadmap
+- Each phase must include:
+  - name
+  - duration
+  - focus
+  - milestones
+
+DO NOT include exercises here.
+
+---
+
+## STEP 2 — PLAN (STRUCTURE)
+
+- Convert the roadmap into:
+  - monthly plan
+  - weekly plan
+  - daily plan
+
+Each plan must:
+- Reflect progression from the roadmap
+- Define workload, intensity, and focus
+- Stay within user constraints (time, days, level)
+
+DO NOT assign specific exercises yet.
+
+---
+
+## STEP 3 — EXERCISE USAGE (DATABASE)
+
+You are provided with an exercise library from the application database.
+
+CRITICAL RULES:
+- You MUST use this library as the PRIMARY source
+- Do NOT invent exercises if suitable ones exist
+- Match exercises to:
+  - user level
+  - equipment
+  - constraints
+
+---
+
+## STEP 4 — QUEST GENERATION (EXECUTION)
+
+Using:
+- roadmap
+- plan
+- exercise library
+
+Generate:
+- daily quests
+- weekly quests
+- monthly quests
+
+Each quest must:
+- be clear and actionable
+- fit within session duration
+- follow the weekly structure
+- use exercises from the database
+
+---
+
+## STEP 5 — GAMIFICATION
+
+Add:
+- XP system (balanced)
+- streak bonuses
+- adaptive difficulty
+- re-planning rules
+- penalty quests (corrective, not punishing)
+
+---
+
+## OUTPUT FORMAT (STRICT JSON ONLY)
+
+{
+  "roadmap": [
+    {
+      "phase_name": "",
+      "duration_weeks": 0,
+      "focus": "",
+      "milestones": []
+    }
+  ],
+  "monthly_plan": [
+    {
+      "month": 1,
+      "focus": "",
+      "expected_outcome": ""
+    }
+  ],
+  "weekly_plan": [
+    {
+      "week": 1,
+      "focus": "",
+      "workload": "",
+      "notes": ""
+    }
+  ],
+  "daily_plan": [
+    {
+      "day": 1,
+      "focus": "",
+      "workload": "",
+      "notes": ""
+    }
+  ],
+  "quests": {
+    "daily": [
+      {
+        "title": "",
+        "description": "",
+        "tasks": [],
+        "estimated_time_min": 0,
+        "difficulty": "easy|medium|hard",
+        "type": "strength|cardio|mobility|recovery|habit",
+        "xp": 0
+      }
+    ],
+    "weekly": [...],
+    "monthly": [...]
+  },
+  "scoring_system": {
+    "xp_rules": {
+      "easy": 10,
+      "medium": 20,
+      "hard": 40
+    },
+    "streak_bonus": {
+      "3_days": 10,
+      "7_days": 30,
+      "14_days": 75
+    }
+  },
+  "adaptive_difficulty": {
+    "increase_if": "user completes >85%",
+    "decrease_if": "user completes <50%",
+    "adjustments": [
+      "modify reps",
+      "adjust duration",
+      "swap exercises"
+    ]
+  },
+  "replanning_rules": {
+    "missed_daily": [
+      "reschedule within same week",
+      "replace with shorter equivalent"
+    ],
+    "missed_multiple_days": [
+      "insert recovery sessions",
+      "rebalance workload"
+    ]
+  },
+  "penalty_quests": [
+    {
+      "trigger": "",
+      "title": "",
+      "description": "",
+      "xp": 0
+    }
+  ]
+}
+
+---
+
+## RULES
+
+- DO NOT skip steps
+- DO NOT generate quests before plan is defined
+- DO NOT ignore the exercise library
+- Avoid repetition in quest descriptions
+- Keep instructions clear and concise
+- Ensure workout variety (strength, cardio, mobility, recovery)
+- Ensure all tasks fit within session duration
+
+---
+
+## GOAL
+
+Create a system that feels like:
+- a professional coach
+- a structured program
+- a gamified experience
+
+The user should always know exactly what to do next.`;
+
+	const model = genAI.getGenerativeModel({
+		model: "gemini-1.5-flash",
+		systemInstruction: FULL_SYSTEM_PROMPT,
+	});
+	const roadmapModel = genAI.getGenerativeModel({
+		model: "gemini-1.5-flash",
+		systemInstruction: ROADMAP_ONLY_PROMPT,
+	});
+	const genConfig = {
+		temperature: 0.3,
+		topP: 0.9,
+		maxOutputTokens: 8192,
+	};
+
+	const parseJsonObject = (text) => {
+		const start = text.indexOf("{");
+		const end = text.lastIndexOf("}");
+		if (start === -1 || end === -1) return null;
+		return JSON.parse(text.slice(start, end + 1));
+	};
+
+	const baseInput = {
+		goal_title: String(goalTitle || "").trim().slice(0, 500),
+		deadline: deadlineDate ? new Date(deadlineDate).toISOString() : null,
+		current_level_number: Number(currentLevel) || 1,
+		description: String(description || "").trim().slice(0, 2000),
+		user_profile: userProfile && typeof userProfile === "object" ? userProfile : null,
+		notes: "Follow strict JSON. Do not include markdown.",
+	};
+
+	let roadmapPlan = null;
+	try {
+		const prompt = `USER_INPUT_JSON:\n${JSON.stringify(baseInput, null, 2)}\n\nReturn JSON ONLY.`;
+		const result = await roadmapModel.generateContent({
+			contents: [{ role: "user", parts: [{ text: prompt }] }],
+			generationConfig: genConfig,
+		});
+		roadmapPlan = parseJsonObject(result.response.text());
+	} catch {
+		roadmapPlan = null;
+	}
+
+	try {
+		const libEntries = Array.isArray(libraryContext?.entries) ? libraryContext.entries : [];
+		const libNote = typeof libraryContext?.note === "string" ? libraryContext.note : "";
+
+		const fullInput = {
+			...baseInput,
+			roadmap_plan: roadmapPlan,
+			user_db_context: userDbContext && typeof userDbContext === "object" ? userDbContext : null,
+			exercise_library_note: libNote,
+			exercise_library_entries: libEntries,
+		};
+
+		const prompt = `USER_INPUT_JSON:\n${JSON.stringify(fullInput, null, 2)}\n\nReturn STRICT JSON ONLY exactly matching the specified output format.`;
+		const result = await model.generateContent({
+			contents: [{ role: "user", parts: [{ text: prompt }] }],
+			generationConfig: genConfig,
+		});
+		const system = parseJsonObject(result.response.text());
+		if (!system || typeof system !== "object") return finishFallback();
+
+		const q = system.quests || {};
+		const daily = Array.isArray(q.daily) ? q.daily : [];
+		const weekly = Array.isArray(q.weekly) ? q.weekly : [];
+		const monthly = Array.isArray(q.monthly) ? q.monthly : [];
+
+		const statFromType = (t) => {
+			const s = String(t || "").toLowerCase();
+			if (s === "strength") return "str";
+			if (s === "cardio") return "agi";
+			if (s === "mobility") return "vit";
+			if (s === "recovery") return "vit";
+			if (s === "habit") return "int";
+			return "vit";
+		};
+
+		const toInstructions = (row) => {
+			const desc = String(row?.description || "").trim();
+			const tasks = Array.isArray(row?.tasks) ? row.tasks.map((x) => String(x || "").trim()).filter(Boolean) : [];
+			const parts = [];
+			if (desc) parts.push(desc);
+			if (tasks.length) {
+				parts.push(
+					"Tasks:\n" + tasks.map((t, i) => `${i + 1}. ${t}`).join("\n")
+				);
+			}
+			return parts.join("\n\n").slice(0, 1800);
+		};
+
+		const toCompletion = (row) => {
+			const min = Number(row?.estimated_time_min);
+			const time = Number.isFinite(min) && min > 0 ? Math.round(min) : null;
+			const tail = time ? ` within ${time} minutes` : "";
+			return `Complete the listed tasks${tail}.`;
+		};
+
+		const toDifficulty = (row) => {
+			const d = String(row?.difficulty || "medium").toLowerCase();
+			return d === "easy" || d === "medium" || d === "hard" ? d : "medium";
+		};
+
+		const toXp = (row, fallbackXp) => {
+			const x = Number(row?.xp);
+			if (Number.isFinite(x) && x > 0) return Math.round(x);
+			return fallbackXp;
+		};
+
+		const mapList = (rows, tf, xpFallback) =>
+			rows
+				.map((row) => ({
+					title: String(row?.title || "").trim().slice(0, 160),
+					instructions: toInstructions(row),
+					completionStandard: toCompletion(row),
+					statType: statFromType(row?.type),
+					xp: toXp(row, xpFallback),
+					difficulty: toDifficulty(row),
+				}))
+				.filter((r) => r.title && r.instructions);
+
+		const mappedPlan = {
+			goalRestated: String(goalTitle || "").trim().slice(0, 500),
+			currentPhase: String(system?.roadmap?.[0]?.phase_name || "Program").trim().slice(0, 80),
+			progressionRule:
+				"Advance when weekly completion rate stays above 85% for two consecutive weeks; deload when under 50%.",
+			dailyQuests: mapList(daily, "daily", 80),
+			weeklyQuests: mapList(weekly, "weekly", 260),
+			monthlyQuests: mapList(monthly, "monthly", 520),
+		};
+
+		const { plan, ok } = sanitizeAndValidateFullPlan(mappedPlan, goalTitle, cat, { fitnessMode: true });
+		if (!ok) return finishFallback();
+
+		return { plan, system };
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.warn("[gemini] roadmap/system generation failed:", e?.message || e);
+		return finishFallback();
+	}
+}
+
 function fitnessFallbackSupplementalRows(goalTitle, need, existingLower) {
 	const n = Math.min(15, Math.max(0, Math.round(Number(need) || 0)));
 	if (n <= 0) return [];
