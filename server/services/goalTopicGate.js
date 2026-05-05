@@ -29,6 +29,9 @@ function heuristicFitnessGate(combinedText) {
 
 	const offStrong =
 		/\b(invest(ment|ing)?|stocks?|portfolio|crypto|bitcoin|ethereum|forex|dividend|401k|roth ira|tax lien|real estate flip)\b/i.test(t) ||
+		/\b(millionaire|billionaire|multi-?million|become rich|get rich|wealth building|build wealth|financial freedom|financial independence|fire movement|coast fire|passive income|net worth|six-?figure|seven-?figure|make money online|earn money|double my money|cash flow business|dropship|dropshipping|affiliate marketing)\b/i.test(
+			t
+		) ||
 		/\b(python|javascript|typescript|react\.?js|kubernetes|leetcode|system design interview|software engineer|coding bootcamp)\b/i.test(t) ||
 		/\b(phd|dissertation|thesis|gmat|lsat|mcat|gpa)\b/i.test(t) ||
 		/\b(wedding plan|plan a wedding|instagram growth|tiktok followers|youtube subscribers)\b/i.test(t) ||
@@ -39,6 +42,19 @@ function heuristicFitnessGate(combinedText) {
 	if (offStrong) return "off_topic";
 
 	return "unclear";
+}
+
+/** Last-resort block when the LLM wrongly accepts wealth/career-only goals. */
+function safetyRejectObviousNonFitness(combinedText) {
+	const t = String(combinedText || "").toLowerCase();
+	if (/\b(millionaire|billionaire)\b/.test(t)) return true;
+	if (/\bbecome a millionaire\b/.test(t)) return true;
+	if (/\b(become rich|get rich quick|stock market|day trading|venture capital|startup funding)\b/.test(t)) return true;
+	if (/\bipo\b/.test(t)) return true;
+	if (/\bcrypto\b|\bnft\b/.test(t)) return true;
+	if (/\b(dividend investing|real estate empire|property flipping)\b/.test(t)) return true;
+	if (/\b(salary of \$|earn \$\d|make \$100k)\b/.test(t)) return true;
+	return false;
 }
 
 /**
@@ -70,6 +86,13 @@ export async function assessGoalFitnessRelevance(title, description) {
 
 	const ai = await classifyGoalAsFitnessTraining(titleS, descS);
 	if (ai.fitnessRelated) {
+		if (safetyRejectObviousNonFitness(combined)) {
+			return {
+				ok: false,
+				message: USER_MESSAGE_OFF,
+				suggestions: DEFAULT_SUGGESTIONS,
+			};
+		}
 		return { ok: true };
 	}
 

@@ -1623,7 +1623,7 @@ export async function classifyGoalAsFitnessTraining(title, description) {
 
 IN SCOPE examples: lose fat for summer with lifting; run 10K; squat 315; gain muscle; rehab knee for soccer; meal prep for gym cuts.
 
-OUT OF SCOPE: investing, studying unrelated subjects, career-only, relationships, generic productivity, hobbies with no physical training (chess, piano), mental health without exercise.
+OUT OF SCOPE (must set fitnessRelated=false): wealth or money goals (millionaire, billionaire, retire rich, passive income, stocks, crypto, real estate investing), pure career/salary/startup success, studying/academic scores, relationships/dating, hobbies without physical training (chess, piano), politics, travel with no training angle.
 
 Title: ${JSON.stringify(t)}
 Notes: ${JSON.stringify(d)}
