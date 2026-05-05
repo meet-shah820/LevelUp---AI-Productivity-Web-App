@@ -624,6 +624,8 @@ router.patch("/:id/revert", async (req, res) => {
 
 		// revert quest completion
 		quest.isCompleted = false;
+		// also revert per-exercise checklist state so the quest is truly "undone"
+		quest.exerciseProgress = [];
 		await quest.save();
 
 		const lastGrant = await History.findOne({
