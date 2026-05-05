@@ -48,20 +48,133 @@ function parseOptionalDate(raw) {
 	return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Seed rolling instances — scales with deadline; soft caps keep Mongo inserts bounded. */
-function computeSeedWindows(months, dailyTemplateCount, weeklyTemplateCount, monthlyTemplateCount) {
-	const m = Math.max(1, Math.min(36, months));
-	let daysToSeed = Math.min(120, Math.max(14, Math.round(m * 4)));
-	let weeksToSeed = Math.min(52, Math.max(6, Math.ceil(m * 1.25)));
-	let monthsToSeed =
-		monthlyTemplateCount > 0 ? Math.min(18, Math.max(3, Math.ceil(m / 3))) : 0;
-	const dc = Math.max(1, dailyTemplateCount);
-	const wc = Math.max(1, weeklyTemplateCount);
-	const mc = Math.max(1, monthlyTemplateCount);
-	while (daysToSeed > 14 && daysToSeed * dc > 520) daysToSeed -= 1;
-	while (weeksToSeed > 6 && weeksToSeed * wc > 220) weeksToSeed -= 1;
-	while (monthsToSeed > 3 && monthsToSeed * mc > 48) monthsToSeed -= 1;
-	return { daysToSeed, weeksToSeed, monthsToSeed };
+const QUEST_TOTAL_MIN = 6;
+const QUEST_TOTAL_MAX = 15;
+
+/** Total quest rows to create for one goal: 6–15, longer deadline horizon → closer to 15. */
+function targetCombinedQuestCount(months) {
+	const m = Number(months);
+	const clamped = Number.isFinite(m) ? Math.max(1, Math.min(36, m)) : 3;
+	return Math.min(QUEST_TOTAL_MAX, Math.max(QUEST_TOTAL_MIN, Math.round(6 + ((clamped - 1) / 35) * 9)));
+}
+
+function searchSeedAllocation(Dlen, Wlen, Mlen, target) {
+	let best = null;
+	const maxDays = 21;
+	const maxWeeks = 8;
+	const maxMonths = Mlen > 0 ? 4 : 0;
+
+	for (let monthsToSeed = 0; monthsToSeed <= maxMonths; monthsToSeed++) {
+		for (let weeksToSeed = 0; weeksToSeed <= maxWeeks; weeksToSeed++) {
+			for (let daysToSeed = 0; daysToSeed <= maxDays; daysToSeed++) {
+				if (Dlen > 0 && daysToSeed === 0) continue;
+				if (Dlen === 0 && daysToSeed > 0) continue;
+
+				const total = daysToSeed * Dlen + weeksToSeed * Wlen + monthsToSeed * Mlen;
+				if (total < QUEST_TOTAL_MIN || total > QUEST_TOTAL_MAX) continue;
+
+				const diff = Math.abs(total - target);
+				if (
+					!best ||
+					diff < best.diff ||
+					(diff === best.diff && total > best.total)
+				) {
+					best = { daysToSeed, weeksToSeed, monthsToSeed, total, diff };
+				}
+			}
+		}
+	}
+	return best;
+}
+
+/**
+ * Pick rolling windows so total inserted quests stays in [6, 15] (deadline-scaled target).
+ * May trim template arrays when the AI returns very long lists so totals can fit in range.
+ * @returns {{ seedPlan: object, daysToSeed: number, weeksToSeed: number, monthsToSeed: number }}
+ */
+function allocateQuestSeedWindowsWithPlan(months, plan) {
+	const target = targetCombinedQuestCount(months);
+
+	const trim = (p, dailyCap, weeklyCap, monthlyCap) => ({
+		...p,
+		dailyQuests: Array.isArray(p.dailyQuests) ? p.dailyQuests.slice(0, dailyCap) : [],
+		weeklyQuests: Array.isArray(p.weeklyQuests) ? p.weeklyQuests.slice(0, weeklyCap) : [],
+		monthlyQuests: Array.isArray(p.monthlyQuests) ? p.monthlyQuests.slice(0, monthlyCap) : [],
+	});
+
+	let seedPlan = plan;
+	let capCfg = [
+		[40, 24, 14],
+		[8, 6, 4],
+		[5, 4, 3],
+	];
+
+	let allocation = null;
+	for (const [dc, wc, mc] of capCfg) {
+		seedPlan = trim(plan, dc, wc, mc);
+		const Dlen = seedPlan.dailyQuests.length;
+		const Wlen = seedPlan.weeklyQuests.length;
+		const Mlen = seedPlan.monthlyQuests.length;
+
+		if (Dlen + Wlen + Mlen === 0) {
+			allocation = null;
+			continue;
+		}
+
+		allocation = searchSeedAllocation(Dlen, Wlen, Mlen, target);
+		if (allocation) break;
+	}
+
+	if (!allocation) {
+		seedPlan = trim(plan, 5, 4, 3);
+		const Dlen = seedPlan.dailyQuests.length;
+		const Wlen = seedPlan.weeklyQuests.length;
+		const Mlen = seedPlan.monthlyQuests.length;
+		allocation = searchSeedAllocation(Dlen, Wlen, Mlen, target);
+	}
+
+	if (!allocation) {
+		seedPlan = trim(plan, 5, 4, 3);
+		const Dlen = seedPlan.dailyQuests.length;
+		const Wlen = seedPlan.weeklyQuests.length;
+		const Mlen = seedPlan.monthlyQuests.length;
+		let daysToSeed = Dlen ? 1 : 0;
+		let weeksToSeed = Wlen ? 1 : 0;
+		let monthsToSeed = Mlen ? 1 : 0;
+		let total = daysToSeed * Dlen + weeksToSeed * Wlen + monthsToSeed * Mlen;
+		while (total < QUEST_TOTAL_MIN && Dlen > 0 && daysToSeed < 21) {
+			daysToSeed += 1;
+			total += Dlen;
+		}
+		while (total < QUEST_TOTAL_MIN && Wlen > 0 && weeksToSeed < 8) {
+			weeksToSeed += 1;
+			total += Wlen;
+		}
+		while (total < QUEST_TOTAL_MIN && Mlen > 0 && monthsToSeed < 4) {
+			monthsToSeed += 1;
+			total += Mlen;
+		}
+		while (total > QUEST_TOTAL_MAX && daysToSeed > 0) {
+			daysToSeed -= 1;
+			total -= Dlen;
+		}
+		while (total > QUEST_TOTAL_MAX && weeksToSeed > 0) {
+			weeksToSeed -= 1;
+			total -= Wlen;
+		}
+		while (total > QUEST_TOTAL_MAX && monthsToSeed > 0) {
+			monthsToSeed -= 1;
+			total -= Mlen;
+		}
+		return { seedPlan, daysToSeed, weeksToSeed, monthsToSeed };
+	}
+
+	return {
+		seedPlan,
+		daysToSeed: allocation.daysToSeed,
+		weeksToSeed: allocation.weeksToSeed,
+		monthsToSeed: allocation.monthsToSeed,
+	};
 }
 
 function penaltyDoc(tf, q) {
@@ -82,12 +195,7 @@ function penaltyDoc(tf, q) {
 
 function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new Date()) {
 	const months = estimateGoalHorizonMonths(deadline, "");
-	const { daysToSeed, weeksToSeed, monthsToSeed } = computeSeedWindows(
-		months,
-		plan.dailyQuests.length,
-		plan.weeklyQuests.length,
-		plan.monthlyQuests.length
-	);
+	const { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
 
 	const questsToInsert = [];
 
@@ -95,7 +203,7 @@ function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new D
 		const date = new Date(now);
 		date.setDate(date.getDate() + i);
 		date.setHours(12, 0, 0, 0);
-		for (const q of plan.dailyQuests) {
+		for (const q of seedPlan.dailyQuests) {
 			const briefing = buildBriefingPayloadFromRichQuest(q);
 			questsToInsert.push({
 				userId,
@@ -124,7 +232,7 @@ function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new D
 		const weekDate = new Date(now);
 		weekDate.setDate(weekDate.getDate() + w * 7);
 		weekDate.setHours(12, 0, 0, 0);
-		for (const q of plan.weeklyQuests) {
+		for (const q of seedPlan.weeklyQuests) {
 			const briefing = buildBriefingPayloadFromRichQuest(q);
 			questsToInsert.push({
 				userId,
@@ -154,7 +262,7 @@ function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new D
 		monthDate.setMonth(monthDate.getMonth() + m);
 		monthDate.setDate(1);
 		monthDate.setHours(12, 0, 0, 0);
-		for (const q of plan.monthlyQuests) {
+		for (const q of seedPlan.monthlyQuests) {
 			const briefing = buildBriefingPayloadFromRichQuest(q);
 			questsToInsert.push({
 				userId,
