@@ -485,6 +485,8 @@ Rules: safety first; progressive overload; realistic workload; consistency over 
 
 Goal lock: user_profile.goal must paraphrase the PRIMARY TRAINING GOAL from the user message (same intent and domain). Do not invent a different outcome. Every daily_quest title, objective, and workout must visibly advance that exact goal (e.g. 5k goal → running/conditioning volume; max squat → squat pattern and accessories). Weekly and monthly layers must measure progress toward the same goal.
 
+Quest batch bounds: the server materializes one batch of standard quests per goal between 6 and 15 instances (count scales with deadline horizon). Provide enough distinct, substantive daily / weekly / monthly templates so a rolling window can fill that range without padding with empty or repetitive shells; each template should stand alone as one quest card.
+
 App data + creativity: when USER CONTEXT (from MongoDB) is present, treat it as factual (level, streak, other active goals, recent completed quest titles). Synthesize a fresh program that is not a copy of those past titles; stay specific to the PRIMARY TRAINING GOAL and avoid recycling generic "full body" weeks unless the goal is general conditioning. If the user message includes a RE-ALIGNMENT or RE-PLAN note, treat it as a new pass: ensure every line matches the current goal and is not left over from an old topic.
 
 When the user message includes REFERENCE_LIBRARY (exercise rows from this app database), prefer those exercise names, muscle categories, and equipment when they fit the stated goal; otherwise use standard safe gym movements. Daily quests are the user schedule — each must stay actionable and time-bounded.
@@ -1317,10 +1319,15 @@ function fitnessFallbackSupplementalRows(goalTitle, need, existingLower) {
 	const n = Math.min(15, Math.max(0, Math.round(Number(need) || 0)));
 	if (n <= 0) return [];
 	const fb = fallbackRichTemplate(goalTitle, "Fitness");
-	const pool = [...fb.dailyQuests, ...fb.weeklyQuests];
+	const pool = [
+		...(Array.isArray(fb.dailyQuests) ? fb.dailyQuests : []),
+		...(Array.isArray(fb.weeklyQuests) ? fb.weeklyQuests : []),
+		...(Array.isArray(fb.monthlyQuests) ? fb.monthlyQuests : []),
+	];
+	if (pool.length === 0) return [];
 	const out = [];
 	let round = 0;
-	while (out.length < n && round < 40) {
+	while (out.length < n && round < 100) {
 		for (const src of pool) {
 			if (out.length >= n) break;
 			let title = String(src.title || "").trim();
@@ -1336,6 +1343,35 @@ function fitnessFallbackSupplementalRows(goalTitle, need, existingLower) {
 			out.push(q);
 		}
 		round += 1;
+	}
+	return out;
+}
+
+/** Last resort: deterministic unique titles so the server can always reach 6–15 when templates exist. */
+function fitnessForcedTopUpRows(goalTitle, need, existingLower) {
+	const n = Math.min(15, Math.max(0, Math.round(Number(need) || 0)));
+	if (n <= 0) return [];
+	const fb = fallbackRichTemplate(goalTitle, "Fitness");
+	const pool = [
+		...(Array.isArray(fb.dailyQuests) ? fb.dailyQuests : []),
+		...(Array.isArray(fb.weeklyQuests) ? fb.weeklyQuests : []),
+		...(Array.isArray(fb.monthlyQuests) ? fb.monthlyQuests : []),
+	];
+	if (pool.length === 0) return [];
+	const out = [];
+	for (let i = 0; out.length < n && i < 300; i++) {
+		const src = pool[i % pool.length];
+		const base = String(src.title || "").trim().slice(0, 120);
+		const title = `${base} · block ${i + 1}`;
+		const q = sanitizeRichQuestRow({ ...src, title }, "daily");
+		const low = q.title.toLowerCase();
+		if (!q.title || existingLower.has(low)) continue;
+		const errors = validateRichQuestRow(q, goalTitle, "Fitness", "fb", out.length, {
+			fitnessMode: true,
+		});
+		if (errors.length) continue;
+		existingLower.add(low);
+		out.push(q);
 	}
 	return out;
 }
@@ -1377,8 +1413,9 @@ export async function generateSupplementalFitnessRichQuests({
 			? `\nREFERENCE_LIBRARY:\n${JSON.stringify(libEntries).slice(0, 4500)}\n`
 			: "";
 
-	const runModel = async (strict) => {
+	const runModel = async (strict, attemptIndex) => {
 		if (!genAI) return [];
+		const temperature = strict ? 0.16 : attemptIndex >= 2 ? 0.2 : 0.32;
 		const model = genAI.getGenerativeModel({
 			model: "gemini-1.5-flash",
 			systemInstruction: `You are a strength & conditioning coach. Output ONLY valid JSON (no markdown).
@@ -1404,7 +1441,7 @@ ${dbBlock}${libBlock}${fix}
 Output ONLY the JSON array.`;
 		const result = await model.generateContent({
 			contents: [{ role: "user", parts: [{ text: prompt }] }],
-			generationConfig: { temperature: strict ? 0.22 : 0.32, topP: 0.88, maxOutputTokens: 6144 },
+			generationConfig: { temperature, topP: 0.88, maxOutputTokens: 6144 },
 		});
 		const text = result.response.text();
 		const start = text.indexOf("[");
@@ -1415,9 +1452,9 @@ Output ONLY the JSON array.`;
 	};
 
 	let parsed = [];
-	for (let attempt = 0; attempt < 2; attempt++) {
+	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
-			parsed = await runModel(attempt > 0);
+			parsed = await runModel(attempt > 0, attempt);
 			if (parsed.length) break;
 		} catch (e) {
 			// eslint-disable-next-line no-console
@@ -1449,6 +1486,10 @@ Output ONLY the JSON array.`;
 
 	if (out.length < n) {
 		out.push(...fitnessFallbackSupplementalRows(goalTitle, n - out.length, existingLower));
+	}
+
+	if (out.length < n) {
+		out.push(...fitnessForcedTopUpRows(goalTitle, n - out.length, existingLower));
 	}
 
 	return out.slice(0, n);

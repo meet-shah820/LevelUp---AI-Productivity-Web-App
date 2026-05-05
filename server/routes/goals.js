@@ -350,6 +350,130 @@ function trimQuestBatchToMax(questsToInsert) {
 	}
 }
 
+/**
+ * Clamp batch to [QUEST_TOTAL_MIN, QUEST_TOTAL_MAX], preferring exactly `targetCount` when possible.
+ * Pads by extending rolling windows from templates, then AI + fallback supplemental rows for the goal.
+ */
+async function finalizeQuestBatchToTarget(
+	questsToInsert,
+	seedPlan,
+	userId,
+	goalId,
+	now,
+	daysToSeed,
+	weeksToSeed,
+	monthsToSeed,
+	targetCount,
+	supplementCtx
+) {
+	const target = Math.min(QUEST_TOTAL_MAX, Math.max(QUEST_TOTAL_MIN, Math.round(Number(targetCount) || QUEST_TOTAL_MIN)));
+
+	trimQuestBatchToMax(questsToInsert);
+	while (questsToInsert.length > target) {
+		questsToInsert.pop();
+	}
+
+	let padDay = coerceUInt(daysToSeed);
+	let padWeek = coerceUInt(weeksToSeed);
+	let padMonth = coerceUInt(monthsToSeed);
+	let guard = 0;
+	while (questsToInsert.length < target && questsToInsert.length < QUEST_TOTAL_MAX && guard++ < 120) {
+		if (seedPlan.dailyQuests?.length > 0) {
+			addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, padDay);
+			padDay += 1;
+			continue;
+		}
+		if (seedPlan.weeklyQuests?.length > 0) {
+			addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, padWeek);
+			padWeek += 1;
+			continue;
+		}
+		if (seedPlan.monthlyQuests?.length > 0) {
+			addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, padMonth);
+			padMonth += 1;
+			continue;
+		}
+		break;
+	}
+
+	trimQuestBatchToMax(questsToInsert);
+	while (questsToInsert.length > target) {
+		questsToInsert.pop();
+	}
+
+	const supplementToCeiling = async (ceiling, maxPasses = 4) => {
+		if (!supplementCtx || ceiling <= 0) return;
+		for (let pass = 0; pass < maxPasses && questsToInsert.length < ceiling && questsToInsert.length < QUEST_TOTAL_MAX; pass++) {
+			const need = Math.min(ceiling - questsToInsert.length, QUEST_TOTAL_MAX - questsToInsert.length);
+			if (need <= 0) break;
+			const beforeLen = questsToInsert.length;
+			const existingTitles = questsToInsert.map((q) => String(q.title || ""));
+			let rows = [];
+			try {
+				rows = await generateSupplementalFitnessRichQuests({
+					goalTitle: supplementCtx.goalTitle,
+					description: supplementCtx.description,
+					count: need,
+					existingTitles,
+					currentLevel: supplementCtx.currentLevel,
+					userDbContext: supplementCtx.userDbContext ?? null,
+					libraryContext: supplementCtx.libraryContext ?? null,
+				});
+			} catch (sup) {
+				// eslint-disable-next-line no-console
+				console.warn("[goals] supplemental AI quests:", sup?.message || sup);
+				rows = [];
+			}
+			let off = padDay;
+			for (const row of rows) {
+				if (questsToInsert.length >= ceiling) break;
+				if (questsToInsert.length >= QUEST_TOTAL_MAX) break;
+				pushOneDailyFromRichRow(questsToInsert, row, userId, goalId, now, off);
+				off += 1;
+			}
+			padDay = off;
+			if (questsToInsert.length === beforeLen) break;
+		}
+	};
+
+	await supplementToCeiling(target);
+
+	trimQuestBatchToMax(questsToInsert);
+	while (questsToInsert.length > target) {
+		questsToInsert.pop();
+	}
+
+	// Hard floor: never return fewer than QUEST_TOTAL_MIN when we can pad or supplement.
+	guard = 0;
+	while (questsToInsert.length < QUEST_TOTAL_MIN && questsToInsert.length < QUEST_TOTAL_MAX && guard++ < 80) {
+		if (seedPlan.dailyQuests?.length > 0) {
+			addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, padDay);
+			padDay += 1;
+			continue;
+		}
+		if (seedPlan.weeklyQuests?.length > 0) {
+			addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, padWeek);
+			padWeek += 1;
+			continue;
+		}
+		if (seedPlan.monthlyQuests?.length > 0) {
+			addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, padMonth);
+			padMonth += 1;
+			continue;
+		}
+		break;
+	}
+
+	const floorCeiling = Math.min(QUEST_TOTAL_MAX, Math.max(QUEST_TOTAL_MIN, target));
+	await supplementToCeiling(floorCeiling, 4);
+
+	trimQuestBatchToMax(questsToInsert);
+	// If still above target after floor pass (e.g. floor added extras), trim back to target cap.
+	while (questsToInsert.length > target) {
+		questsToInsert.pop();
+	}
+}
+
 function pushOneDailyFromRichRow(questsToInsert, q, userId, goalId, now, dayOffset) {
 	const date = new Date(now);
 	date.setDate(date.getDate() + dayOffset);
@@ -377,47 +501,6 @@ function pushOneDailyFromRichRow(questsToInsert, q, userId, goalId, now, dayOffs
 	});
 }
 
-/** If projected count still falls outside [6,15] or windows could not adjust, pad/trim the built array. */
-function enforceQuestBatchSizeRange(
-	questsToInsert,
-	seedPlan,
-	userId,
-	goalId,
-	now,
-	daysToSeed,
-	weeksToSeed,
-	monthsToSeed,
-	padDayStart = null
-) {
-	trimQuestBatchToMax(questsToInsert);
-
-	let padDay = coerceUInt(padDayStart != null ? padDayStart : daysToSeed);
-	let padWeek = coerceUInt(weeksToSeed);
-	let padMonth = coerceUInt(monthsToSeed);
-	let guard = 0;
-
-	while (questsToInsert.length < QUEST_TOTAL_MIN && guard++ < 60) {
-		if (seedPlan.dailyQuests?.length > 0) {
-			addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, padDay);
-			padDay += 1;
-			continue;
-		}
-		if (seedPlan.weeklyQuests?.length > 0) {
-			addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, padWeek);
-			padWeek += 1;
-			continue;
-		}
-		if (seedPlan.monthlyQuests?.length > 0) {
-			addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, padMonth);
-			padMonth += 1;
-			continue;
-		}
-		break;
-	}
-
-	trimQuestBatchToMax(questsToInsert);
-}
-
 async function buildQuestDocumentsFromPlan(
 	userId,
 	goalId,
@@ -427,6 +510,7 @@ async function buildQuestDocumentsFromPlan(
 	now = new Date()
 ) {
 	const months = estimateGoalHorizonMonths(deadline, "");
+	const targetQuestCount = targetCombinedQuestCount(months);
 	let { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
 	({ daysToSeed, weeksToSeed, monthsToSeed } = reconcileWindowsWithTemplateCounts(
 		daysToSeed,
@@ -451,41 +535,7 @@ async function buildQuestDocumentsFromPlan(
 
 	trimQuestBatchToMax(questsToInsert);
 
-	let padDayForEnforce = daysToSeed;
-	if (supplementCtx && questsToInsert.length < QUEST_TOTAL_MIN) {
-		const room = QUEST_TOTAL_MAX - questsToInsert.length;
-		const need = Math.min(QUEST_TOTAL_MIN - questsToInsert.length, Math.max(0, room));
-		if (need > 0) {
-			const existingTitles = questsToInsert.map((q) => String(q.title || ""));
-			let rows = [];
-			try {
-				rows = await generateSupplementalFitnessRichQuests({
-					goalTitle: supplementCtx.goalTitle,
-					description: supplementCtx.description,
-					count: need,
-					existingTitles,
-					currentLevel: supplementCtx.currentLevel,
-					userDbContext: supplementCtx.userDbContext ?? null,
-					libraryContext: supplementCtx.libraryContext ?? null,
-				});
-			} catch (sup) {
-				// eslint-disable-next-line no-console
-				console.warn("[goals] supplemental AI quests:", sup?.message || sup);
-				rows = [];
-			}
-			let off = daysToSeed;
-			for (const row of rows) {
-				if (questsToInsert.length >= QUEST_TOTAL_MIN) break;
-				if (questsToInsert.length >= QUEST_TOTAL_MAX) break;
-				pushOneDailyFromRichRow(questsToInsert, row, userId, goalId, now, off);
-				off += 1;
-			}
-			padDayForEnforce = off;
-		}
-	}
-
-	trimQuestBatchToMax(questsToInsert);
-	enforceQuestBatchSizeRange(
+	await finalizeQuestBatchToTarget(
 		questsToInsert,
 		seedPlan,
 		userId,
@@ -494,7 +544,8 @@ async function buildQuestDocumentsFromPlan(
 		daysToSeed,
 		weeksToSeed,
 		monthsToSeed,
-		padDayForEnforce
+		targetQuestCount,
+		supplementCtx
 	);
 
 	return questsToInsert;
