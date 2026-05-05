@@ -3,7 +3,6 @@ import { Layout } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Quests from "./pages/Quests";
 import Goals from "./pages/Goals";
-import FocusMode from "./pages/FocusMode";
 import Skills from "./pages/Skills";
 import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
@@ -54,7 +53,6 @@ export const router = createBrowserRouter([
           { index: true, Component: Dashboard },
           { path: "quests", Component: Quests },
           { path: "goals", Component: Goals },
-          { path: "focus", Component: FocusMode },
           { path: "skills", Component: Skills },
           { path: "analytics", Component: Analytics },
           { path: "streak", Component: Streak },

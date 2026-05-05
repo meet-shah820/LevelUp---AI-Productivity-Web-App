@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen } from "lucide-react";
+import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen, Play, Pause, RotateCcw } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -30,6 +30,19 @@ import {
 } from "../components/ui/select";
 
 const MONGO_OBJECT_ID_RE = /^[a-f\d]{24}$/i;
+
+type QuestTimerState = {
+  running: boolean;
+  startedAtMs: number | null;
+  elapsedMs: number;
+};
+
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
 
 function normalizeGoalId(raw: unknown): string {
   if (raw == null) return "";
@@ -138,7 +151,13 @@ export default function Quests() {
   const mountedRef = useRef(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailQuestId, setDetailQuestId] = useState<string | null>(null);
-  // Per-card timers will update locally; avoid page-wide rerenders.
+  const [nowTick, setNowTick] = useState(0);
+  const [timers, setTimers] = useState<Record<string, QuestTimerState>>({});
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick((t) => (t + 1) % 1_000_000), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const openQuestDetail = (id: string) => {
     if (!MONGO_OBJECT_ID_RE.test(id)) return;
@@ -296,10 +315,19 @@ export default function Quests() {
   }, [highlightQuestParam, setSearchParams]);
 
   const handleCompleteQuest = async (questId: string) => {
+    const t = timers[questId];
+    const questRow = quests.find((q) => q.id === questId);
+    const difficulty = String(questRow?.difficulty || "Medium").toLowerCase();
+    const timerEligible = difficulty === "medium" || difficulty === "hard";
+    const activeMs =
+      t && (t.running && t.startedAtMs != null ? t.elapsedMs + (Date.now() - t.startedAtMs) : t.elapsedMs);
+    const timerActiveSeconds =
+      timerEligible && activeMs && Number.isFinite(activeMs) ? Math.max(0, Math.round(activeMs / 1000)) : 0;
+
     setQuests(quests.map((q) => (q.id === questId ? { ...q, completed: true } : q)));
     if (questId && questId.length >= 12) {
       try {
-        await completeQuest(questId);
+        await completeQuest(questId, timerActiveSeconds ? { timerActiveSeconds } : undefined);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
         await loadGoalsAndQuests();
       } catch {
@@ -390,6 +418,33 @@ export default function Quests() {
     const goal = goals.find((g) => g.id === quest.goalId);
     const displayTitle = formatQuestTitleForDisplay(quest.title, goal?.title);
     const isHighlighted = Boolean(highlightQuestId && quest.id === highlightQuestId);
+    const timerEligible = quest.difficulty === "Medium" || quest.difficulty === "Hard";
+    const timer = timers[quest.id];
+    const elapsedMs =
+      timer && (timer.running && timer.startedAtMs != null ? timer.elapsedMs + (Date.now() - timer.startedAtMs) : timer.elapsedMs);
+    const startTimer = () => {
+      setTimers((prev) => {
+        const cur = prev[quest.id] || { running: false, startedAtMs: null, elapsedMs: 0 };
+        if (cur.running) return prev;
+        return {
+          ...prev,
+          [quest.id]: { running: true, startedAtMs: Date.now(), elapsedMs: cur.elapsedMs || 0 },
+        };
+      });
+    };
+
+    const stopTimer = () => {
+      setTimers((prev) => {
+        const cur = prev[quest.id];
+        if (!cur || !cur.running || cur.startedAtMs == null) return prev;
+        const nextElapsed = Math.max(0, cur.elapsedMs + (Date.now() - cur.startedAtMs));
+        return { ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: nextElapsed } };
+      });
+    };
+
+    const resetTimer = () => {
+      setTimers((prev) => ({ ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: 0 } }));
+    };
 
     return (
       <motion.div
@@ -517,6 +572,39 @@ export default function Quests() {
               </div>
 
               <div className="flex items-center gap-2">
+              {timerEligible && !quest.completed && (
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                  <Badge variant="outline" className="border-slate-500/30 text-slate-200 text-[11px] tabular-nums">
+                    <Clock className="w-3 h-3 mr-1" />
+                    {formatElapsed(elapsedMs || 0)}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (timer?.running) stopTimer();
+                      else startTimer();
+                    }}
+                    aria-label={timer?.running ? "Stop timer" : "Start timer"}
+                  >
+                    {timer?.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      resetTimer();
+                    }}
+                    aria-label="Reset timer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
               {!quest.completed && (
                 <Button
                   onClick={(e) => {

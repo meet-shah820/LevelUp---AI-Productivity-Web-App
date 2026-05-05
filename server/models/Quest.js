@@ -58,6 +58,21 @@ const QuestSchema = new mongoose.Schema(
 			],
 			default: [],
 		},
+		/**
+		 * Timer-based execution parameters for medium/hard quests.
+		 * Used to award a non-linear bonus XP based on active training time (anti-farm caps apply).
+		 */
+		trainingTimer: {
+			expectedDurationMin: { type: Number, default: null },
+			maxEffectiveDurationMin: { type: Number, default: null },
+			xpPerMinute: { type: Number, default: null },
+		},
+		/** Last completion timer snapshot (for transparency / debugging). */
+		lastCompletionTimer: {
+			activeSeconds: { type: Number, default: null },
+			bonusXpAwarded: { type: Number, default: null },
+			completedAt: { type: Date, default: null },
+		},
 	},
 	{ timestamps: true }
 );

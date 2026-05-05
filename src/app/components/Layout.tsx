@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Target,
   Flag,
-  Focus,
   Zap,
   BarChart3,
   User,
@@ -140,7 +139,6 @@ export function Layout() {
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Quests", href: "/quests", icon: Target },
       { name: "Training", href: "/goals", icon: Flag },
-      { name: "Training focus", href: "/focus", icon: Focus },
       // Skills is visible for all tiers again
       { name: "Skills", href: "/skills", icon: Zap },
       // Pro+ feature example
@@ -188,9 +186,6 @@ export function Layout() {
         break;
       case "level":
         navigate("/?highlightLevel=1");
-        break;
-      case "focus":
-        navigate("/focus?highlight=1");
         break;
       default:
         navigate("/");

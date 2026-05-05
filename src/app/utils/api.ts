@@ -218,38 +218,22 @@ export async function refreshGoalQuests(goalId: string) {
 	return body;
 }
 
-export async function completeQuest(questId: string) {
-	const res = await apiFetch(`/api/quests/${questId}/complete`, { method: "PATCH" });
-	if (!res.ok) throw new Error("Failed to complete quest");
-	return res.json();
-}
-
 export async function revertQuest(questId: string) {
 	const res = await apiFetch(`/api/quests/${questId}/revert`, { method: "PATCH" });
 	if (!res.ok) throw new Error("Failed to revert quest");
 	return res.json();
 }
 
-export async function completeFocusSession(xp: number) {
-	const res = await apiFetch(`/api/focus/complete`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ xp }),
+export async function completeQuest(
+	questId: string,
+	payload?: { timerActiveSeconds?: number }
+) {
+	const res = await apiFetch(`/api/quests/${encodeURIComponent(questId)}/complete`, {
+		method: "PATCH",
+		headers: payload ? { "Content-Type": "application/json" } : undefined,
+		body: payload ? JSON.stringify(payload) : undefined,
 	});
-	if (!res.ok) throw new Error("Failed to record focus session");
-	return res.json();
-}
-
-export type FocusTodayStats = {
-	sessionsToday: number;
-	focusXpToday: number;
-	focusMinutesToday: number;
-	focusHoursToday: number;
-};
-
-export async function getFocusTodayStats(): Promise<FocusTodayStats> {
-	const res = await apiFetch("/api/focus/today-stats");
-	if (!res.ok) throw new Error("Failed to load focus stats");
+	if (!res.ok) throw new Error("Failed to complete quest");
 	return res.json();
 }
 

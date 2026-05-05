@@ -507,6 +507,11 @@ router.patch("/:id/complete", async (req, res) => {
 			return res.json({ updated: false, leveledUp: false });
 		}
 
+		const timerActiveSecondsRaw = req.body?.timerActiveSeconds;
+		const timerActiveSeconds = Number.isFinite(Number(timerActiveSecondsRaw))
+			? Math.max(0, Math.min(24 * 60 * 60, Math.round(Number(timerActiveSecondsRaw))))
+			: 0;
+
 		quest.isCompleted = true;
 		try {
 			const goal = quest.goalId ? await Goal.findById(quest.goalId).lean() : null;
@@ -514,7 +519,6 @@ router.patch("/:id/complete", async (req, res) => {
 		} catch {
 			// If checklist derivation fails, still allow quest completion.
 		}
-		await quest.save();
 
 		// Update user stats and xp
 		const user = await User.findById(quest.userId);
@@ -522,9 +526,71 @@ router.patch("/:id/complete", async (req, res) => {
 			return res.status(500).json({ error: "User not found for quest" });
 		}
 
+		const difficulty = String(quest.difficulty || "medium").toLowerCase();
+		const timerEligible = difficulty === "medium" || difficulty === "hard";
+		const baseXpReward = Number(quest.xpReward) || 0;
+
+		const resolveTimerConfig = () => {
+			const t = quest.trainingTimer || {};
+			let expected = Number(t.expectedDurationMin);
+			let maxEff = Number(t.maxEffectiveDurationMin);
+			let ppm = Number(t.xpPerMinute);
+			if (!Number.isFinite(expected) || expected <= 0) expected = difficulty === "hard" ? 45 : 30;
+			if (!Number.isFinite(maxEff) || maxEff <= 0) maxEff = Math.round(expected * 2);
+			if (!Number.isFinite(ppm) || ppm <= 0) {
+				// Conservative default: at expected time, bonus ≈ 20–30% of base XP.
+				ppm = Math.max(1, Math.round(baseXpReward / Math.max(10, expected) / 4));
+			}
+			expected = Math.max(5, Math.min(240, Math.round(expected)));
+			maxEff = Math.max(expected, Math.min(360, Math.round(maxEff)));
+			ppm = Math.max(1, Math.min(60, Math.round(ppm)));
+			return { expectedDurationMin: expected, maxEffectiveDurationMin: maxEff, xpPerMinute: ppm };
+		};
+
+		const computeTimerBonusXp = () => {
+			if (!timerEligible) return { bonusXp: 0, cfg: null, effectiveMinutes: 0 };
+			if (!timerActiveSeconds || timerActiveSeconds < 30) return { bonusXp: 0, cfg: null, effectiveMinutes: 0 };
+			if (timerActiveSeconds > 6 * 60 * 60) return { bonusXp: 0, cfg: null, effectiveMinutes: 0 }; // anti-farm hard stop
+
+			const cfg = resolveTimerConfig();
+			const minutes = timerActiveSeconds / 60;
+			const effectiveMinutes = Math.min(minutes, cfg.maxEffectiveDurationMin);
+
+			// Non-linear bonus curve with diminishing returns.
+			const expected = cfg.expectedDurationMin;
+			const ppm = cfg.xpPerMinute;
+
+			const m1 = Math.min(effectiveMinutes, expected);
+			const m2 = Math.max(0, Math.min(effectiveMinutes, expected * 1.5) - expected);
+			const m3 = Math.max(0, effectiveMinutes - expected * 1.5);
+
+			let raw = 0;
+			raw += m1 * ppm; // normal gains up to expected
+			raw += m2 * ppm * 0.35; // diminished after expected → expected*1.5
+			raw += m3 * ppm * 0.1; // heavily diminished beyond expected*1.5
+
+			// Efficiency factor: modest boost for finishing near/under expected, penalty if far over.
+			const ratio = effectiveMinutes / expected;
+			let efficiency = 1;
+			if (ratio < 0.75) efficiency = 1.05;
+			else if (ratio <= 1.2) efficiency = 1.0;
+			else if (ratio <= 1.5) efficiency = 0.85;
+			else efficiency = 0.6;
+
+			let bonus = Math.round(raw * efficiency);
+			const cap = Math.max(0, Math.round(baseXpReward * 0.8));
+			if (bonus > cap) bonus = cap;
+			if (bonus < 0) bonus = 0;
+			return { bonusXp: bonus, cfg, effectiveMinutes };
+		};
+
+		const timerBonus = computeTimerBonusXp();
+
 		const comebackOn = (user.comebackBonusQuestsRemaining || 0) > 0;
 		const mult = comebackOn ? 2 : 1;
-		const xpGrant = Math.round(quest.xpReward * mult);
+		const baseXpGrant = Math.round(baseXpReward * mult);
+		// Bonus XP is awarded for execution quality/time, independent of comeback multiplier.
+		const xpGrant = baseXpGrant + (timerBonus.bonusXp || 0);
 
 		const preLevel = calculateLevelFromXp(user.xp);
 		user.xp += xpGrant;
@@ -552,6 +618,18 @@ router.patch("/:id/complete", async (req, res) => {
 		}
 		await user.save();
 
+		quest.lastCompletionTimer = {
+			activeSeconds: timerActiveSeconds || null,
+			bonusXpAwarded: timerBonus.bonusXp || 0,
+			completedAt: new Date(),
+		};
+		// Persist config if we had to synthesize it (so subsequent runs are stable).
+		if (timerEligible) {
+			const cfg = timerBonus.cfg || resolveTimerConfig();
+			quest.trainingTimer = cfg;
+		}
+		await quest.save();
+
 		await History.create({
 			userId: user._id,
 			type: "quest_complete",
@@ -560,7 +638,18 @@ router.patch("/:id/complete", async (req, res) => {
 			meta: {
 				statType: quest.statType,
 				title: quest.title,
-				...(mult === 2 ? { comebackMultiplier: 2, baseXpReward: quest.xpReward } : {}),
+				...(mult === 2 ? { comebackMultiplier: 2, baseXpReward } : {}),
+				...(timerBonus.bonusXp
+					? {
+							timerActiveSeconds,
+							timerBonusXp: timerBonus.bonusXp,
+							timerExpectedDurationMin: timerBonus.cfg?.expectedDurationMin,
+							timerMaxEffectiveDurationMin: timerBonus.cfg?.maxEffectiveDurationMin,
+							timerXpPerMinute: timerBonus.cfg?.xpPerMinute,
+						}
+					: timerActiveSeconds
+						? { timerActiveSeconds, timerBonusXp: 0 }
+						: {}),
 			},
 		});
 		if (postLevel > preLevel) {
@@ -591,6 +680,7 @@ router.patch("/:id/complete", async (req, res) => {
 			leveledUp: postLevel > preLevel || leveledUpFromBonus,
 			timeframeBonusXp: bonus.awarded || 0,
 			xpGranted: xpGrant,
+			timerBonusXp: timerBonus.bonusXp || 0,
 			comebackMultiplier: mult,
 			comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining ?? 0,
 			easyModeTier: user.easyModeTier ?? 0,

@@ -6,7 +6,6 @@ import { loadProjectEnv } from "./config/loadEnv.js";
 import goalsRouter from "./routes/goals.js";
 import dashboardRouter from "./routes/dashboard.js";
 import questsRouter from "./routes/quests.js";
-import focusRouter from "./routes/focus.js";
 import achievementsRouter from "./routes/achievements.js";
 import analyticsRouter from "./routes/analytics.js";
 import skillsRouter from "./routes/skills.js";
@@ -65,7 +64,6 @@ app.get("/", (_req, res) => {
 app.use("/api/goals", goalsRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/quests", questsRouter);
-app.use("/api/focus", focusRouter);
 app.use("/api/achievements", achievementsRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/skills", skillsRouter);

@@ -83,14 +83,19 @@ function buildAiDescriptionWithProfile(description, userProfile) {
 	return desc ? `${desc}\n\n${block}` : block;
 }
 
-const QUEST_TOTAL_MIN = 6;
-const QUEST_TOTAL_MAX = 15;
+// Total quest instances to seed per goal (across daily + weekly + monthly).
+// This should scale beyond the old "5 quests" feel so multiple goals produce noticeably more content.
+const QUEST_TOTAL_MIN = 10;
+const QUEST_TOTAL_MAX = 30;
 
-/** Total quest rows to create for one goal: 6–15, longer deadline horizon → closer to 15. */
+/** Total quest rows to create for one goal: 10–30, longer deadline horizon → closer to 30. */
 function targetCombinedQuestCount(months) {
 	const m = Number(months);
 	const clamped = Number.isFinite(m) ? Math.max(1, Math.min(36, m)) : 3;
-	return Math.min(QUEST_TOTAL_MAX, Math.max(QUEST_TOTAL_MIN, Math.round(6 + ((clamped - 1) / 35) * 9)));
+	return Math.min(
+		QUEST_TOTAL_MAX,
+		Math.max(QUEST_TOTAL_MIN, Math.round(10 + ((clamped - 1) / 35) * 20))
+	);
 }
 
 function searchSeedAllocation(Dlen, Wlen, Mlen, target) {
@@ -234,6 +239,37 @@ function coerceUInt(n, fallback = 0) {
 	return Math.floor(x);
 }
 
+function timerConfigForQuestRow(q, questType) {
+	const difficulty = String(q?.difficulty || "medium").toLowerCase();
+	if (!(difficulty === "medium" || difficulty === "hard")) return null;
+	const blob = `${String(q?.completionStandard || "")}\n${String(q?.instructions || "")}\n${String(q?.title || "")}`;
+	const m = blob.match(/\b(\d{1,3})\s*(min|mins|minute|minutes)\b/i);
+	let expected = m ? Number(m[1]) : NaN;
+
+	// Defaults by quest window type (daily < weekly < monthly).
+	const base =
+		questType === "monthly"
+			? difficulty === "hard"
+				? 120
+				: 90
+			: questType === "weekly"
+				? difficulty === "hard"
+					? 90
+					: 60
+				: difficulty === "hard"
+					? 45
+					: 30;
+
+	if (!Number.isFinite(expected) || expected <= 0) expected = base;
+	expected = Math.max(5, Math.min(240, Math.round(expected)));
+	const maxEffectiveDurationMin = Math.max(expected, Math.min(360, Math.round(expected * 2)));
+
+	const baseXp = Math.max(0, Math.round(Number(q?.xp) || 0));
+	const xpPerMinute = Math.max(1, Math.min(60, Math.round(baseXp / Math.max(10, expected) / 4)));
+
+	return { expectedDurationMin: expected, maxEffectiveDurationMin, xpPerMinute };
+}
+
 /**
  * Ensure rolling window counts produce a projected quest total in [6, 15] when possible.
  * Fixes NaN windows and edge cases where math yields 5 (e.g. 1×5 dailies only).
@@ -296,6 +332,7 @@ function addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, dayO
 	date.setHours(12, 0, 0, 0);
 	for (const q of seedPlan.dailyQuests) {
 		const briefing = buildBriefingPayloadFromRichQuest(q);
+		const trainingTimer = timerConfigForQuestRow(q, "daily");
 		questsToInsert.push({
 			userId,
 			goalId,
@@ -309,6 +346,7 @@ function addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, dayO
 			expiresAt: null,
 			isExpired: false,
 			penalty: penaltyDoc("daily", q),
+			...(trainingTimer ? { trainingTimer } : {}),
 			briefing: {
 				...briefing,
 				requirements: "",
@@ -325,6 +363,7 @@ function addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, we
 	weekDate.setHours(12, 0, 0, 0);
 	for (const q of seedPlan.weeklyQuests) {
 		const briefing = buildBriefingPayloadFromRichQuest(q);
+		const trainingTimer = timerConfigForQuestRow(q, "weekly");
 		questsToInsert.push({
 			userId,
 			goalId,
@@ -338,6 +377,7 @@ function addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, we
 			expiresAt: null,
 			isExpired: false,
 			penalty: penaltyDoc("weekly", q),
+			...(trainingTimer ? { trainingTimer } : {}),
 			briefing: {
 				...briefing,
 				requirements: "",
@@ -355,6 +395,7 @@ function addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, 
 	monthDate.setHours(12, 0, 0, 0);
 	for (const q of seedPlan.monthlyQuests) {
 		const briefing = buildBriefingPayloadFromRichQuest(q);
+		const trainingTimer = timerConfigForQuestRow(q, "monthly");
 		questsToInsert.push({
 			userId,
 			goalId,
@@ -368,6 +409,7 @@ function addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, 
 			expiresAt: null,
 			isExpired: false,
 			penalty: penaltyDoc("monthly", q),
+			...(trainingTimer ? { trainingTimer } : {}),
 			briefing: {
 				...briefing,
 				requirements: "",
@@ -513,6 +555,7 @@ function pushOneDailyFromRichRow(questsToInsert, q, userId, goalId, now, dayOffs
 	date.setDate(date.getDate() + dayOffset);
 	date.setHours(12, 0, 0, 0);
 	const briefing = buildBriefingPayloadFromRichQuest(q);
+	const trainingTimer = timerConfigForQuestRow(q, "daily");
 	questsToInsert.push({
 		userId,
 		goalId,
@@ -526,6 +569,7 @@ function pushOneDailyFromRichRow(questsToInsert, q, userId, goalId, now, dayOffs
 		expiresAt: null,
 		isExpired: false,
 		penalty: penaltyDoc("daily", q),
+		...(trainingTimer ? { trainingTimer } : {}),
 		briefing: {
 			...briefing,
 			requirements: "",
