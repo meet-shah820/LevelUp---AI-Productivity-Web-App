@@ -20,9 +20,8 @@ router.get("/", async (req, res) => {
 		const sinceEpoch = new Date(0);
 		const hist = await History.find({ userId: user._id, occurredAt: { $gte: sinceEpoch } }).lean();
 		const questsCompleted = hist.filter((h) => h.type === "quest_complete" && h.xpChange > 0).length;
-		const focusXp = hist.filter((h) => h.type === "focus_session").reduce((s, h) => s + h.xpChange, 0);
-		// assuming 90 xp per 10 minutes baseline ~ 9 xp/min, hours approx:
-		const focusHours = focusXp / (9 * 60);
+		// focusHours removed (focus feature deprecated); keep interface compatible.
+		const focusHours = 0;
 
 		// ensure unlocks are recorded (so Profile recent achievements can be real)
 		await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });

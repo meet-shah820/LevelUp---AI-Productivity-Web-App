@@ -25,7 +25,6 @@ type Skill = {
 };
 
 function categoryLabel(cat: string): string {
-  if (cat === "Productivity") return "Conditioning";
   return cat;
 }
 
@@ -51,14 +50,11 @@ export default function Skills() {
 
   const categoryColors: Record<string, { from: string; to: string; glow: string }> = {
     Fitness: { from: "from-red-500", to: "to-orange-500", glow: "shadow-red-500/50" },
-    Learning: { from: "from-blue-500", to: "to-cyan-500", glow: "shadow-blue-500/50" },
-    Productivity: { from: "from-purple-500", to: "to-pink-500", glow: "shadow-purple-500/50" },
-    Business: { from: "from-green-500", to: "to-emerald-500", glow: "shadow-green-500/50" },
   };
 
   const rows = useMemo(() => {
     // deterministic order by category then unlockLevel, include ALL skills by chunking into rows of 4
-    const order = ["Fitness", "Learning", "Productivity", "Business"];
+    const order = ["Fitness"];
     const pool = selectedCategory ? skills.filter((s) => s.category === selectedCategory) : skills;
     const sorted = [...pool].sort((a, b) => {
       const ca = order.indexOf(a.category);

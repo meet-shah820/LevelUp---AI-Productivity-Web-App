@@ -19,20 +19,8 @@ export async function evaluateAndRecordAchievements({ user, goals, questsComplet
 	if (user.xp >= 25000) unlockedNow.add("xp_25k");
 	if (user.xp >= 50000) unlockedNow.add("xp_50k");
 	if (user.xp >= 100000) unlockedNow.add("xp_100k");
-	if (focusHours >= 1) unlockedNow.add("focus_1h");
-	if (focusHours >= 10) unlockedNow.add("focus_10h");
-	if (focusHours >= 25) unlockedNow.add("focus_25h");
-	if (focusHours >= 50) unlockedNow.add("focus_50h");
 	if (categories.has("Fitness") && questsCompleted >= 25) unlockedNow.add("fitness_25");
 	if (categories.has("Fitness") && questsCompleted >= 100) unlockedNow.add("fitness_100");
-	if (categories.has("Learning") && questsCompleted >= 25) unlockedNow.add("learning_25");
-	if (categories.has("Learning") && questsCompleted >= 100) unlockedNow.add("learning_100");
-	if (categories.has("Career") && questsCompleted >= 25) unlockedNow.add("career_25");
-	if (categories.has("Career") && questsCompleted >= 100) unlockedNow.add("career_100");
-	if (categories.has("Health") && questsCompleted >= 25) unlockedNow.add("health_25");
-	if (categories.has("Health") && questsCompleted >= 100) unlockedNow.add("health_100");
-	if (categories.has("Creativity") && questsCompleted >= 25) unlockedNow.add("creativity_25");
-	if (categories.has("Creativity") && questsCompleted >= 100) unlockedNow.add("creativity_100");
 
 	const applicable = ACHIEVEMENTS.filter((a) => isAchievementApplicable(a, categories));
 	const applicableIds = new Set(applicable.map((a) => a.id));
