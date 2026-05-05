@@ -33,17 +33,13 @@ export default function Skills() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [summary, setSummary] = useState<{ category: string; unlocked: number; total: number }[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
       try {
         const res = await getSkills();
         setSkills(res.all || []);
-        setSummary(res.summary || []);
       } catch {
         setSkills([]);
-        setSummary([]);
       }
     })();
   }, []);
@@ -53,13 +49,8 @@ export default function Skills() {
   };
 
   const rows = useMemo(() => {
-    // deterministic order by category then unlockLevel, include ALL skills by chunking into rows of 4
-    const order = ["Fitness"];
-    const pool = selectedCategory ? skills.filter((s) => s.category === selectedCategory) : skills;
-    const sorted = [...pool].sort((a, b) => {
-      const ca = order.indexOf(a.category);
-      const cb = order.indexOf(b.category);
-      if (ca !== cb) return ca - cb;
+    // deterministic order by unlockLevel, chunk into rows of 4
+    const sorted = [...skills].sort((a, b) => {
       return (a.unlockLevel || 0) - (b.unlockLevel || 0);
     });
     const chunks: Skill[][] = [];
@@ -67,12 +58,16 @@ export default function Skills() {
       chunks.push(sorted.slice(i, i + 4));
     }
     return chunks;
-  }, [skills, selectedCategory]);
+  }, [skills]);
 
   const handleSkillClick = (skill: Skill) => {
     setSelectedSkill(skill);
     setDialogOpen(true);
   };
+
+  const totalSkills = skills.length;
+  const unlockedCount = skills.filter((s) => s.unlocked).length;
+  const pct = totalSkills > 0 ? (unlockedCount / totalSkills) * 100 : 0;
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
@@ -80,70 +75,19 @@ export default function Skills() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-2"
+        className="space-y-3"
       >
         <h1 className="text-3xl font-bold text-white">Skill tree</h1>
         <p className="text-gray-400">Unlock perks across strength, conditioning, and training habits</p>
-      </motion.div>
-
-      {/* Stats Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(categoryColors).map(([category, colors]) => {
-            const s = summary.find((x) => x.category === category);
-            const unlockedCount = s?.unlocked ?? 0;
-            const total = s?.total ?? skills.filter((x) => x.category === category).length;
-
-            return (
-              <button
-                key={category}
-                type="button"
-                onClick={() =>
-                  setSelectedCategory((prev) => (prev === category ? null : category))
-                }
-                className={`text-left rounded-xl transition-colors ${
-                  selectedCategory === category
-                    ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#0B0F1A]"
-                    : ""
-                }`}
-              >
-                <Card className="bg-[#111827] border-purple-500/20 p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div
-                      className={`w-3 h-3 rounded-full bg-gradient-to-r ${colors.from} ${colors.to}`}
-                    />
-                    <h3 className="font-medium text-white">{categoryLabel(category)}</h3>
-                    {selectedCategory === category && (
-                      <span className="ml-auto text-xs text-indigo-300">Selected</span>
-                    )}
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {unlockedCount}/{total}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {selectedCategory === category ? "Click to clear filter" : "Skills Unlocked"}
-                  </p>
-                </Card>
-              </button>
-            );
-          })}
-        </div>
-        {/* Clear filter control for small screens */}
-        {selectedCategory && (
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setSelectedCategory(null)}
-              className="text-xs text-gray-400 hover:text-white underline"
-            >
-              Show all categories
-            </button>
+        <div className="max-w-xl">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-gray-400">Unlocked</span>
+            <span className="text-sm font-semibold text-white tabular-nums">
+              {unlockedCount}/{totalSkills}
+            </span>
           </div>
-        )}
+          <Progress value={pct} className="h-2 mt-2" />
+        </div>
       </motion.div>
 
       {/* Skill Tree Grid */}

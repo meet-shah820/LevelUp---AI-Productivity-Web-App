@@ -590,7 +590,7 @@ export default function Dashboard() {
             <Card className="bg-[#111827] border-purple-500/20">
               <div className="p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Recent Activity</h3>
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                   {activities.length === 0 ? (
                     <p className="text-sm text-gray-500 py-2 text-center">
                       No recent activity yet. Finish a quest, log a training-focus session, or unlock an achievement to see it here.
