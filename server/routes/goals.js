@@ -193,99 +193,234 @@ function penaltyDoc(tf, q) {
 	};
 }
 
+function coerceUInt(n, fallback = 0) {
+	const x = Number(n);
+	if (!Number.isFinite(x) || x < 0) return fallback;
+	return Math.floor(x);
+}
+
+/**
+ * Ensure rolling window counts produce a projected quest total in [6, 15] when possible.
+ * Fixes NaN windows and edge cases where math yields 5 (e.g. 1×5 dailies only).
+ */
+function reconcileWindowsWithTemplateCounts(daysToSeed, weeksToSeed, monthsToSeed, seedPlan) {
+	let d = coerceUInt(daysToSeed);
+	let w = coerceUInt(weeksToSeed);
+	let mo = coerceUInt(monthsToSeed);
+	const D = seedPlan.dailyQuests?.length ?? 0;
+	const W = seedPlan.weeklyQuests?.length ?? 0;
+	const M = seedPlan.monthlyQuests?.length ?? 0;
+
+	const projected = () => d * D + w * W + mo * M;
+
+	if (D > 0 && d === 0) d = 1;
+
+	for (let guard = 0; guard < 100; guard++) {
+		const p = projected();
+		if (p >= QUEST_TOTAL_MIN && p <= QUEST_TOTAL_MAX) {
+			return { daysToSeed: d, weeksToSeed: w, monthsToSeed: mo };
+		}
+		if (p < QUEST_TOTAL_MIN) {
+			if (D > 0 && d < 30) {
+				d += 1;
+				continue;
+			}
+			if (W > 0 && w < 12) {
+				w += 1;
+				continue;
+			}
+			if (M > 0 && mo < 8) {
+				mo += 1;
+				continue;
+			}
+			break;
+		}
+		if (p > QUEST_TOTAL_MAX) {
+			if (M > 0 && mo > 0) {
+				mo -= 1;
+				continue;
+			}
+			if (W > 0 && w > 0) {
+				w -= 1;
+				continue;
+			}
+			if (D > 0 && d > 1) {
+				d -= 1;
+				continue;
+			}
+			break;
+		}
+	}
+
+	return { daysToSeed: d, weeksToSeed: w, monthsToSeed: mo };
+}
+
+function addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, dayOffset) {
+	const date = new Date(now);
+	date.setDate(date.getDate() + dayOffset);
+	date.setHours(12, 0, 0, 0);
+	for (const q of seedPlan.dailyQuests) {
+		const briefing = buildBriefingPayloadFromRichQuest(q);
+		questsToInsert.push({
+			userId,
+			goalId,
+			title: q.title,
+			xpReward: Math.round(q.xp),
+			statType: q.statType,
+			difficulty: q.difficulty || "medium",
+			isCompleted: false,
+			type: "daily",
+			date,
+			expiresAt: null,
+			isExpired: false,
+			penalty: penaltyDoc("daily", q),
+			briefing: {
+				...briefing,
+				requirements: "",
+			},
+			briefingGeneratedAt: new Date(),
+			briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+		});
+	}
+}
+
+function addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, weekIndex) {
+	const weekDate = new Date(now);
+	weekDate.setDate(weekDate.getDate() + weekIndex * 7);
+	weekDate.setHours(12, 0, 0, 0);
+	for (const q of seedPlan.weeklyQuests) {
+		const briefing = buildBriefingPayloadFromRichQuest(q);
+		questsToInsert.push({
+			userId,
+			goalId,
+			title: q.title,
+			xpReward: Math.round(q.xp),
+			statType: q.statType,
+			difficulty: q.difficulty || "medium",
+			isCompleted: false,
+			type: "weekly",
+			date: weekDate,
+			expiresAt: null,
+			isExpired: false,
+			penalty: penaltyDoc("weekly", q),
+			briefing: {
+				...briefing,
+				requirements: "",
+			},
+			briefingGeneratedAt: new Date(),
+			briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+		});
+	}
+}
+
+function addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, monthIndex) {
+	const monthDate = new Date(now);
+	monthDate.setMonth(monthDate.getMonth() + monthIndex);
+	monthDate.setDate(1);
+	monthDate.setHours(12, 0, 0, 0);
+	for (const q of seedPlan.monthlyQuests) {
+		const briefing = buildBriefingPayloadFromRichQuest(q);
+		questsToInsert.push({
+			userId,
+			goalId,
+			title: q.title,
+			xpReward: Math.round(q.xp),
+			statType: q.statType,
+			difficulty: q.difficulty || "medium",
+			isCompleted: false,
+			type: "monthly",
+			date: monthDate,
+			expiresAt: null,
+			isExpired: false,
+			penalty: penaltyDoc("monthly", q),
+			briefing: {
+				...briefing,
+				requirements: "",
+			},
+			briefingGeneratedAt: new Date(),
+			briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
+		});
+	}
+}
+
+/** If projected count still falls outside [6,15] or windows could not adjust, pad/trim the built array. */
+function enforceQuestBatchSizeRange(
+	questsToInsert,
+	seedPlan,
+	userId,
+	goalId,
+	now,
+	daysToSeed,
+	weeksToSeed,
+	monthsToSeed
+) {
+	while (questsToInsert.length > QUEST_TOTAL_MAX) {
+		questsToInsert.pop();
+	}
+
+	let padDay = coerceUInt(daysToSeed);
+	let padWeek = coerceUInt(weeksToSeed);
+	let padMonth = coerceUInt(monthsToSeed);
+	let guard = 0;
+
+	while (questsToInsert.length < QUEST_TOTAL_MIN && guard++ < 60) {
+		if (seedPlan.dailyQuests?.length > 0) {
+			addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, padDay);
+			padDay += 1;
+			continue;
+		}
+		if (seedPlan.weeklyQuests?.length > 0) {
+			addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, padWeek);
+			padWeek += 1;
+			continue;
+		}
+		if (seedPlan.monthlyQuests?.length > 0) {
+			addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, padMonth);
+			padMonth += 1;
+			continue;
+		}
+		break;
+	}
+
+	while (questsToInsert.length > QUEST_TOTAL_MAX) {
+		questsToInsert.pop();
+	}
+}
+
 function buildQuestDocumentsFromPlan(userId, goalId, plan, deadline, now = new Date()) {
 	const months = estimateGoalHorizonMonths(deadline, "");
-	const { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
+	let { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
+	({ daysToSeed, weeksToSeed, monthsToSeed } = reconcileWindowsWithTemplateCounts(
+		daysToSeed,
+		weeksToSeed,
+		monthsToSeed,
+		seedPlan
+	));
 
 	const questsToInsert = [];
 
 	for (let i = 0; i < daysToSeed; i++) {
-		const date = new Date(now);
-		date.setDate(date.getDate() + i);
-		date.setHours(12, 0, 0, 0);
-		for (const q of seedPlan.dailyQuests) {
-			const briefing = buildBriefingPayloadFromRichQuest(q);
-			questsToInsert.push({
-				userId,
-				goalId,
-				title: q.title,
-				xpReward: Math.round(q.xp),
-				statType: q.statType,
-				difficulty: q.difficulty || "medium",
-				isCompleted: false,
-				type: "daily",
-				date,
-				expiresAt: null,
-				isExpired: false,
-				penalty: penaltyDoc("daily", q),
-				briefing: {
-					...briefing,
-					requirements: "",
-				},
-				briefingGeneratedAt: new Date(),
-				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-			});
-		}
+		addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, i);
 	}
 
 	for (let w = 0; w < weeksToSeed; w++) {
-		const weekDate = new Date(now);
-		weekDate.setDate(weekDate.getDate() + w * 7);
-		weekDate.setHours(12, 0, 0, 0);
-		for (const q of seedPlan.weeklyQuests) {
-			const briefing = buildBriefingPayloadFromRichQuest(q);
-			questsToInsert.push({
-				userId,
-				goalId,
-				title: q.title,
-				xpReward: Math.round(q.xp),
-				statType: q.statType,
-				difficulty: q.difficulty || "medium",
-				isCompleted: false,
-				type: "weekly",
-				date: weekDate,
-				expiresAt: null,
-				isExpired: false,
-				penalty: penaltyDoc("weekly", q),
-				briefing: {
-					...briefing,
-					requirements: "",
-				},
-				briefingGeneratedAt: new Date(),
-				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-			});
-		}
+		addWeeklyWeekAtOffset(questsToInsert, seedPlan, userId, goalId, now, w);
 	}
 
 	for (let m = 0; m < monthsToSeed; m++) {
-		const monthDate = new Date(now);
-		monthDate.setMonth(monthDate.getMonth() + m);
-		monthDate.setDate(1);
-		monthDate.setHours(12, 0, 0, 0);
-		for (const q of seedPlan.monthlyQuests) {
-			const briefing = buildBriefingPayloadFromRichQuest(q);
-			questsToInsert.push({
-				userId,
-				goalId,
-				title: q.title,
-				xpReward: Math.round(q.xp),
-				statType: q.statType,
-				difficulty: q.difficulty || "medium",
-				isCompleted: false,
-				type: "monthly",
-				date: monthDate,
-				expiresAt: null,
-				isExpired: false,
-				penalty: penaltyDoc("monthly", q),
-				briefing: {
-					...briefing,
-					requirements: "",
-				},
-				briefingGeneratedAt: new Date(),
-				briefingSchemaVersion: BRIEFING_SCHEMA_VERSION,
-			});
-		}
+		addMonthlyMonthAtOffset(questsToInsert, seedPlan, userId, goalId, now, m);
 	}
+
+	enforceQuestBatchSizeRange(
+		questsToInsert,
+		seedPlan,
+		userId,
+		goalId,
+		now,
+		daysToSeed,
+		weeksToSeed,
+		monthsToSeed
+	);
 
 	return questsToInsert;
 }
