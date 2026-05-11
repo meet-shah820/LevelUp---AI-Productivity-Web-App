@@ -581,6 +581,56 @@ export async function getStreakCalendar(fromISO?: string, toISO?: string): Promi
 	return res.json();
 }
 
+export type WeeklyReportDay = {
+	date: string;
+	weekdayShort: string;
+	activityXp: number;
+	focusHours: number;
+	approxQuestEvents: number;
+};
+
+export type WeeklyReportAi = {
+	productivityScore: number;
+	headline: string;
+	summary: string;
+	improvementIdeas: string[];
+	source?: string;
+};
+
+export type WeeklyReportDismissed = {
+	showModal: false;
+	reportWeekId: string;
+};
+
+export type WeeklyReportShown = {
+	showModal: true;
+	reportWeekId: string;
+	weekLabel: string;
+	daily: WeeklyReportDay[];
+	totals: { questsCompleted: number; focusHours: number; activeDays: number };
+	bestDays: { date: string; weekdayShort: string; activityXp: number }[];
+	improveDays: { date: string; weekdayShort: string; activityXp: number }[];
+	consistency: number[];
+	ai: WeeklyReportAi;
+};
+
+export type WeeklyReportResponse = WeeklyReportDismissed | WeeklyReportShown;
+
+export async function getWeeklyReport(): Promise<WeeklyReportResponse> {
+	const res = await apiFetch("/api/weekly-report");
+	if (!res.ok) throw new Error(await readApiErrorMessage(res, "Failed to load weekly report"));
+	return res.json() as Promise<WeeklyReportResponse>;
+}
+
+export async function ackWeeklyReport(reportWeekId: string): Promise<void> {
+	const res = await apiFetch("/api/weekly-report/ack", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ reportWeekId }),
+	});
+	if (!res.ok) throw new Error(await readApiErrorMessage(res, "Failed to save weekly report"));
+}
+
 export type LeaderboardEntry = {
 	position: number;
 	userId: string;

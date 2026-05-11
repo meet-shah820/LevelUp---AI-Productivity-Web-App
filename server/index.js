@@ -17,6 +17,7 @@ import streakRouter from "./routes/streak.js";
 import billingRouter from "./routes/billing.js";
 import { billingWebhookHandler } from "./routes/billingWebhook.js";
 import leaderboardRouter from "./routes/leaderboard.js";
+import weeklyReportRouter from "./routes/weeklyReport.js";
 import fitnessLibraryRouter from "./routes/fitnessLibrary.js";
 import "./jobs/cron.js";
 import "./jobs/penalties.js";
@@ -73,6 +74,7 @@ app.use("/api/settings", settingsRouter);
 app.use("/api/streak", streakRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/leaderboard", leaderboardRouter);
+app.use("/api/weekly-report", weeklyReportRouter);
 app.use("/api/fitness-library", fitnessLibraryRouter);
 
 function startServer(preferredPort) {

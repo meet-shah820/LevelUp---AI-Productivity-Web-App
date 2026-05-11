@@ -41,6 +41,8 @@ const UserSchema = new mongoose.Schema(
 		streak: { type: Number, default: 0 },
 		/** Updated whenever the app resolves the current user (see `getUserForReq`). */
 		lastAppOpenAt: { type: Date, default: null },
+		/** Monday YYYY-MM-DD of the last weekly recap the user dismissed (`GET /api/weekly-report` when showModal was false). */
+		weeklyReportAckWeekId: { type: String, default: "" },
 		/** After 7+ days away, the next N quest completions grant 2× base XP (timeframe set bonus unchanged). */
 		comebackBonusQuestsRemaining: { type: Number, default: 0 },
 		/** After 7+ days away: leaderboard rank uses boosted effective XP until this instant (local server clock). */

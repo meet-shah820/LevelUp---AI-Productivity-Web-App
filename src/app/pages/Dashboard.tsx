@@ -19,7 +19,19 @@ import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { getDashboard, getRecentHistory, completeQuest, revertQuest, getStreakCalendar, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
+import {
+  getDashboard,
+  getRecentHistory,
+  completeQuest,
+  revertQuest,
+  getStreakCalendar,
+  getWeeklyReport,
+  ackWeeklyReport,
+  PROFILE_UPDATED_EVENT,
+  RANK_UPDATED_EVENT,
+  type WeeklyReportShown,
+} from "../utils/api";
+import { WeeklyReportModal } from "../components/WeeklyReportModal";
 
 /** Focus hours from API are decimal hours; display with lowercase unit `h` (e.g. 3.5h). */
 function formatFocusHours(hours: number): string {
@@ -90,6 +102,31 @@ export default function Dashboard() {
   });
 
   const [leveledUp, setLeveledUp] = useState(false);
+
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReportShown | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const r = await getWeeklyReport();
+        if (!mounted) return;
+        if (r.showModal) setWeeklyReport(r);
+      } catch {
+        /* weekly recap is optional */
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleWeeklyReportOpenChange = (open: boolean) => {
+    if (open) return;
+    const prev = weeklyReport;
+    setWeeklyReport(null);
+    if (prev) void ackWeeklyReport(prev.reportWeekId).catch(() => {});
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -289,6 +326,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
+      {weeklyReport ? (
+        <WeeklyReportModal report={weeklyReport} open onOpenChange={handleWeeklyReportOpenChange} />
+      ) : null}
       {/* Welcome Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

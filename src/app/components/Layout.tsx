@@ -28,6 +28,7 @@ import {
   RANK_UPDATED_EVENT,
   BILLING_UPDATED_EVENT,
 } from "../utils/api";
+import { TutorialProvider } from "../tutorial/TutorialContext";
 import { getBillingStatus, type BillingStatus } from "../utils/api";
 
 type Tier = "free" | "starter" | "pro" | "elite";
@@ -202,6 +203,7 @@ export function Layout() {
   const hasUnreadNotifications = latestNotifMs > Math.max(0, lastSeenNotifMs);
 
   return (
+    <TutorialProvider>
     <div className="h-screen flex overflow-hidden bg-[#0B0F1A]">
       {/* Desktop Sidebar */}
       <motion.aside
@@ -465,5 +467,6 @@ export function Layout() {
         </main>
       </div>
     </div>
+    </TutorialProvider>
   );
 }

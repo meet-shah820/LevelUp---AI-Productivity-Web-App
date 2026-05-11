@@ -44,6 +44,7 @@ import {
   RANK_UPDATED_EVENT,
   GoalTopicMismatchError,
 } from "../utils/api";
+import { ONBOARDING_GOAL_CREATED } from "../tutorial/tutorialEvents";
 import { useEffect } from "react";
 
 function normalizeGoalId(raw: unknown): string {
@@ -252,6 +253,7 @@ export default function Goals() {
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+        window.dispatchEvent(new CustomEvent(ONBOARDING_GOAL_CREATED));
         setDialogOpen(false);
         setFormData({
           title: "",
@@ -276,6 +278,7 @@ export default function Goals() {
           color: categoryColors[formData.category],
         };
         setGoals([...goals, newGoal]);
+        window.dispatchEvent(new CustomEvent(ONBOARDING_GOAL_CREATED));
       }
     }
 
@@ -347,6 +350,7 @@ export default function Goals() {
           </p>
         </div>
         <Button
+          data-tutorial="add-goal"
           onClick={handleAddGoal}
           className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
         >
@@ -428,6 +432,7 @@ export default function Goals() {
               Add a program (strength, conditioning, fat loss, race prep) and the app will seed progressive fitness quests
             </p>
             <Button
+              data-tutorial="add-goal"
               onClick={handleAddGoal}
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >

@@ -16,6 +16,7 @@ import {
   RANK_UPDATED_EVENT,
   type GoalProgramModule,
 } from "../utils/api";
+import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
 import { useSearchParams } from "react-router-dom";
@@ -329,6 +330,7 @@ export default function Quests() {
       try {
         await completeQuest(questId, timerActiveSeconds ? { timerActiveSeconds } : undefined);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+        window.dispatchEvent(new CustomEvent(ONBOARDING_QUEST_COMPLETED));
         await loadGoalsAndQuests();
       } catch {
         await loadGoalsAndQuests();
@@ -806,6 +808,7 @@ export default function Quests() {
 
       {/* Quests Tabs */}
       <motion.div
+        data-tutorial="quest-board"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
