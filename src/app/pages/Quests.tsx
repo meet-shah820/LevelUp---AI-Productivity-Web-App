@@ -150,6 +150,8 @@ export default function Quests() {
     easyModeActive: false,
   });
   const mountedRef = useRef(true);
+  /** Coalesce `RANK_UPDATED_EVENT` bursts (e.g. complete + layout) into one quest refresh. */
+  const rankReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailQuestId, setDetailQuestId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(0);
@@ -240,16 +242,25 @@ export default function Quests() {
     }
   }, []);
 
+  const scheduleQuestDataReload = useCallback(() => {
+    if (rankReloadTimerRef.current != null) window.clearTimeout(rankReloadTimerRef.current);
+    rankReloadTimerRef.current = window.setTimeout(() => {
+      rankReloadTimerRef.current = null;
+      void loadGoalsAndQuests();
+    }, 120);
+  }, [loadGoalsAndQuests]);
+
   useEffect(() => {
     void loadGoalsAndQuests();
-    const onRank = () => {
-      void loadGoalsAndQuests();
-    };
-    window.addEventListener(RANK_UPDATED_EVENT, onRank);
+    window.addEventListener(RANK_UPDATED_EVENT, scheduleQuestDataReload);
     return () => {
-      window.removeEventListener(RANK_UPDATED_EVENT, onRank);
+      window.removeEventListener(RANK_UPDATED_EVENT, scheduleQuestDataReload);
+      if (rankReloadTimerRef.current != null) {
+        window.clearTimeout(rankReloadTimerRef.current);
+        rankReloadTimerRef.current = null;
+      }
     };
-  }, [loadGoalsAndQuests]);
+  }, [loadGoalsAndQuests, scheduleQuestDataReload]);
 
   useEffect(() => {
     if (!goalIdFilter) return;
@@ -331,7 +342,6 @@ export default function Quests() {
         await completeQuest(questId, timerActiveSeconds ? { timerActiveSeconds } : undefined);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
         window.dispatchEvent(new CustomEvent(ONBOARDING_QUEST_COMPLETED));
-        await loadGoalsAndQuests();
       } catch {
         await loadGoalsAndQuests();
       }
@@ -344,7 +354,6 @@ export default function Quests() {
       try {
         await revertQuest(questId);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
-        await loadGoalsAndQuests();
       } catch {
         await loadGoalsAndQuests();
       }
