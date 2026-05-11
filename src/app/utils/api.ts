@@ -614,12 +614,35 @@ export type LeaderboardResponse = {
 
 const LEADERBOARD_RANK_QUERY = new Set(["E", "D", "C", "B", "A", "S"]);
 
+export const LEADERBOARD_REQUIRES_GOOGLE_CODE = "leaderboard_requires_google";
+
+/** Thrown when the signed-in user has no Google-linked account (username/password only). */
+export class LeaderboardRequiresGoogleError extends Error {
+	readonly code = LEADERBOARD_REQUIRES_GOOGLE_CODE;
+	constructor() {
+		super("Leaderboard is only available when your account is signed in with Google.");
+		this.name = "LeaderboardRequiresGoogleError";
+	}
+}
+
 export async function getLeaderboard(limit = 50, rank?: string): Promise<LeaderboardResponse> {
 	const params = new URLSearchParams({ limit: String(limit) });
 	const r = rank != null ? String(rank).trim().toUpperCase() : "";
 	if (r && LEADERBOARD_RANK_QUERY.has(r)) params.set("rank", r);
 	const res = await apiFetch(`/api/leaderboard?${params.toString()}`);
-	if (!res.ok) throw new Error("Failed to load leaderboard");
+	if (res.status === 403) {
+		const body = (await res.json().catch(() => ({}))) as {
+			code?: string;
+			requiresGoogle?: boolean;
+			error?: string;
+		};
+		if (body.code === LEADERBOARD_REQUIRES_GOOGLE_CODE || body.requiresGoogle === true) {
+			throw new LeaderboardRequiresGoogleError();
+		}
+		const msg = typeof body.error === "string" && body.error.trim() ? body.error.trim() : "Forbidden";
+		throw new Error(msg);
+	}
+	if (!res.ok) throw new Error(await readApiErrorMessage(res, "Failed to load leaderboard"));
 	return res.json();
 }
 

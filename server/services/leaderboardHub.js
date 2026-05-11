@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
+import User from "../models/User.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 const WS_PATH = "/ws/leaderboard";
@@ -62,17 +63,31 @@ export function attachLeaderboardWebSocket(server) {
 			return;
 		}
 
+		let uid;
 		try {
 			const payload = jwt.verify(token, JWT_SECRET);
-			if (!payload?.uid) throw new Error("missing uid");
+			uid = payload?.uid;
+			if (!uid) throw new Error("missing uid");
 		} catch {
 			socket.destroy();
 			return;
 		}
 
-		wss.handleUpgrade(req, socket, head, (ws) => {
-			wss.emit("connection", ws, req);
-		});
+		User.findById(uid)
+			.select("googleId")
+			.lean()
+			.then((u) => {
+				if (!u?.googleId) {
+					socket.destroy();
+					return;
+				}
+				wss.handleUpgrade(req, socket, head, (ws) => {
+					wss.emit("connection", ws, req);
+				});
+			})
+			.catch(() => {
+				socket.destroy();
+			});
 	});
 
 	wss.on("connection", (ws) => {

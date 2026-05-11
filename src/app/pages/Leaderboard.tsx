@@ -2,8 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { motion } from "motion/react";
-import { getLeaderboard, getLeaderboardWebSocketUrl, type LeaderboardEntry, type LeaderboardResponse } from "../utils/api";
+import {
+	getLeaderboard,
+	getLeaderboardWebSocketUrl,
+	LeaderboardRequiresGoogleError,
+	type LeaderboardEntry,
+	type LeaderboardResponse,
+} from "../utils/api";
+import { setAuthReturnPath } from "../utils/authRedirect";
 import { Radio, Trophy } from "lucide-react";
+
+const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
 const RANK_TABS = ["E", "D", "C", "B", "A", "S"] as const;
 
@@ -34,6 +43,8 @@ export default function Leaderboard() {
 	const [data, setData] = useState<LeaderboardResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	/** Username/password (or other) sign-in without a linked Google account — API and live updates are withheld. */
+	const [googleAccountRequired, setGoogleAccountRequired] = useState(false);
 	const [live, setLive] = useState(false);
 	/** When null, the API defaults to the viewer's own rank bracket. */
 	const [selectedRank, setSelectedRank] = useState<string | null>(null);
@@ -43,10 +54,17 @@ export default function Leaderboard() {
 	const load = useCallback(async () => {
 		try {
 			setError(null);
+			setGoogleAccountRequired(false);
 			const res = await getLeaderboard(50, selectedRank ?? undefined);
 			setData(res);
-		} catch {
-			setError("Failed to load leaderboard");
+		} catch (e) {
+			if (e instanceof LeaderboardRequiresGoogleError) {
+				setGoogleAccountRequired(true);
+				setData(null);
+				setError(null);
+			} else {
+				setError("Failed to load leaderboard");
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -57,6 +75,10 @@ export default function Leaderboard() {
 	}, [load]);
 
 	useEffect(() => {
+		if (googleAccountRequired) {
+			setLive(false);
+			return;
+		}
 		const url = getLeaderboardWebSocketUrl();
 		if (!url) return;
 
@@ -93,7 +115,7 @@ export default function Leaderboard() {
 			else if (ws) ws.close();
 			setLive(false);
 		};
-	}, [load]);
+	}, [load, googleAccountRequired]);
 
 	const yourId = data?.yourRank?.userId;
 	const bracketHighlight = selectedRank ?? data?.rankBracket ?? null;
@@ -139,22 +161,62 @@ export default function Leaderboard() {
 					<h1 className="text-2xl md:text-3xl font-semibold text-white tracking-tight">Leaderboard</h1>
 					<span
 						className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${
-							live ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10" : "border-white/10 text-white/45 bg-white/5"
+							live && !googleAccountRequired
+								? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+								: "border-white/10 text-white/45 bg-white/5"
 						}`}
-						title={live ? "Connected — rankings refresh when anyone earns XP or changes rank" : "Reconnecting…"}
+						title={
+							googleAccountRequired
+								? "Live rankings require a Google-linked account"
+								: live
+									? "Connected — rankings refresh when anyone earns XP or changes rank"
+									: "Reconnecting…"
+						}
 					>
-						<Radio className={`w-3.5 h-3.5 ${live ? "text-emerald-400" : ""}`} />
-						{live ? "Live" : "Offline"}
+						<Radio className={`w-3.5 h-3.5 ${live && !googleAccountRequired ? "text-emerald-400" : ""}`} />
+						{live && !googleAccountRequired ? "Live" : "Offline"}
 					</span>
 				</div>
 				<p className="text-white/55 text-sm md:text-base max-w-2xl">
-					Each Hunter rank has its own board (fitness quest XP and progression). Tabs for ranks you have not reached yet stay hidden until you promote.
-					You only compete with players on the same rank. Sorting is by XP, then level and stats. Underdog boost applies
-					on your current-rank board when active.
+					{googleAccountRequired ? (
+						<>
+							Rankings and live updates are enabled only for accounts that use Google sign-in, so names and standings stay tied
+							to a verified identity.
+						</>
+					) : (
+						<>
+							Each Hunter rank has its own board (fitness quest XP and progression). Tabs for ranks you have not reached yet stay hidden until you promote.
+							You only compete with players on the same rank. Sorting is by XP, then level and stats. Underdog boost applies
+							on your current-rank board when active.
+						</>
+					)}
 				</p>
 			</motion.div>
 
-			<div className="flex flex-wrap gap-2 mb-6">
+			{googleAccountRequired && (
+				<Card className="mb-8 p-6 md:p-8 border border-purple-500/25 bg-gradient-to-br from-[#111827]/90 to-[#1a1f35]/90">
+					<h2 className="text-lg font-semibold text-white mb-2">Connect Google to view the leaderboard</h2>
+					<p className="text-white/60 text-sm mb-6 leading-relaxed max-w-xl">
+						Your account was created with a username and password. To see rankings, live updates, and compete on the board, sign in once with
+						the same Google account you want to use here. If your Google email matches an account email in our system, we link it automatically.
+					</p>
+					<Button
+						type="button"
+						className="w-full sm:w-auto min-w-[220px] bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-0"
+						onClick={() => {
+							setAuthReturnPath("/leaderboard");
+							window.location.href = `${API_BASE}/api/auth/google`;
+						}}
+					>
+						Continue with Google
+					</Button>
+					<p className="text-xs text-white/40 mt-4">
+						After Google sign-in you will return here. You can still use the rest of the app with your current login until you switch fully to Google.
+					</p>
+				</Card>
+			)}
+
+			<div className={`flex flex-wrap gap-2 mb-6 ${googleAccountRequired ? "hidden" : ""}`}>
 				{visibleRankTabs.map((r) => (
 					<Button
 						key={r}
@@ -173,7 +235,7 @@ export default function Leaderboard() {
 				))}
 			</div>
 
-			{data && !data.viewerInBracket && data.viewerHunterRank && (
+			{!googleAccountRequired && data && !data.viewerInBracket && data.viewerHunterRank && (
 				<Card className="mb-4 p-3 border border-amber-500/20 bg-amber-500/5 text-sm text-amber-100/95">
 					Your Hunter rank is <span className="font-semibold text-white">{data.viewerHunterRank}</span>. This tab
 					shows rank <span className="font-semibold text-white">{data.rankBracket}</span> only — open Rank{" "}
@@ -181,7 +243,7 @@ export default function Leaderboard() {
 				</Card>
 			)}
 
-			{data?.yourRank && (
+			{!googleAccountRequired && data?.yourRank && (
 				<Card className="mb-6 p-4 border border-indigo-500/25 bg-indigo-500/5">
 					<p className="text-xs uppercase tracking-wider text-indigo-300/80 mb-1">
 						Your standing · Rank {data.rankBracket}
@@ -216,14 +278,14 @@ export default function Leaderboard() {
 				</Card>
 			)}
 
-			{loading && !data && (
+			{loading && !data && !googleAccountRequired && (
 				<p className="text-white/50" role="status">
 					Loading rankings…
 				</p>
 			)}
 			{error && <p className="text-red-400">{error}</p>}
 
-			{data && (
+			{!googleAccountRequired && data && (
 				<Card className="border border-purple-500/20 bg-[#0f1424]/80 overflow-hidden">
 					<div className="flex gap-2 md:gap-3 px-3 py-2.5 text-xs font-medium text-white/40 border-b border-white/10 items-center">
 						<span className="w-7 md:w-9 shrink-0">#</span>
