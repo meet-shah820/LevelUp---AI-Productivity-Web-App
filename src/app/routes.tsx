@@ -6,7 +6,6 @@ import Goals from "./pages/Goals";
 import Skills from "./pages/Skills";
 import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
-import Achievements from "./pages/Achievements";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
 import Auth from "./pages/Auth";
@@ -25,6 +24,14 @@ function RedirectToPrivacy() {
 
 function RedirectToTerms() {
 	return <Navigate to="/terms" replace />;
+}
+
+function RedirectAchievementsToProgress() {
+  // Preserve old deep-link highlight param when possible.
+  const qs = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const highlight = qs?.get("highlight");
+  const to = highlight ? `/skills?highlightAchievement=${encodeURIComponent(highlight)}` : "/skills";
+  return <Navigate to={to} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -58,7 +65,7 @@ export const router = createBrowserRouter([
           { path: "streak", Component: Streak },
           { path: "leaderboard", Component: Leaderboard },
           { path: "profile", Component: Profile },
-          { path: "achievements", Component: Achievements },
+          { path: "achievements", Component: RedirectAchievementsToProgress },
           { path: "pricing", Component: Pricing },
           { path: "settings", Component: Settings },
         ],

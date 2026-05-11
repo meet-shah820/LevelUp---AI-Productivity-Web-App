@@ -8,19 +8,16 @@ export async function evaluateAndRecordAchievements({ user, goals, questsComplet
 
 	const unlockedNow = new Set();
 	if (questsCompleted >= 1) unlockedNow.add("first_quest");
-	if (questsCompleted >= 5) unlockedNow.add("five_quests");
 	if (questsCompleted >= 10) unlockedNow.add("ten_quests");
-	if (questsCompleted >= 25) unlockedNow.add("twentyfive_quests");
 	if (questsCompleted >= 50) unlockedNow.add("fifty_quests");
 	if (questsCompleted >= 100) unlockedNow.add("hundred_quests");
-	if (questsCompleted >= 250) unlockedNow.add("twofifty_quests");
 	if (user.xp >= 1000) unlockedNow.add("xp_1k");
 	if (user.xp >= 10000) unlockedNow.add("xp_10k");
-	if (user.xp >= 25000) unlockedNow.add("xp_25k");
 	if (user.xp >= 50000) unlockedNow.add("xp_50k");
 	if (user.xp >= 100000) unlockedNow.add("xp_100k");
-	if (categories.has("Fitness") && questsCompleted >= 25) unlockedNow.add("fitness_25");
-	if (categories.has("Fitness") && questsCompleted >= 100) unlockedNow.add("fitness_100");
+	// Keep category check for future category-gated achievements.
+	void focusHours;
+	void categories;
 
 	const applicable = ACHIEVEMENTS.filter((a) => isAchievementApplicable(a, categories));
 	const applicableIds = new Set(applicable.map((a) => a.id));

@@ -5,12 +5,15 @@ import Goal from "../models/Goal.js";
 import { evaluateHunterRank } from "./gemini.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
 import { scheduleLeaderboardBroadcast } from "./leaderboardHub.js";
+import { SKILLS } from "../data/skills.js";
+import { ACHIEVEMENTS } from "../data/achievements.js";
 
 const RANKS = ["E", "D", "C", "B", "A", "S"];
 const RANK_ORDER = Object.fromEntries(RANKS.map((r, i) => [r, i]));
 
-/** Same unlock thresholds as skills route (12 skills) */
-const SKILL_UNLOCK_LEVELS = [2, 4, 8, 2, 4, 8, 3, 5, 9, 2, 6, 12];
+function effectiveSkillUnlockLevel(skill) {
+	return Math.max(1, (skill.unlockLevel || 1) * 5);
+}
 
 export async function gatherRankContext(user) {
 	const userId = user._id;
@@ -32,7 +35,8 @@ export async function gatherRankContext(user) {
 	const stats = user.stats || {};
 	const statSum =
 		(stats.strength || 0) + (stats.intelligence || 0) + (stats.agility || 0) + (stats.vitality || 0);
-	const skillsUnlocked = SKILL_UNLOCK_LEVELS.filter((lv) => user.level >= lv).length;
+	const skillUnlockLevels = SKILLS.map(effectiveSkillUnlockLevel);
+	const skillsUnlocked = skillUnlockLevels.filter((lv) => user.level >= lv).length;
 
 	return {
 		level: user.level,
@@ -53,10 +57,12 @@ export function rankFromFallback(ctx) {
 	let score = 0;
 	score += Math.min(ctx.level / 50, 1) * 26;
 	score += Math.min(ctx.questsCompleted / 180, 1) * 24;
-	score += Math.min(ctx.achievementsUnlocked / 9, 1) * 18;
+	const achievementTotal = Math.max(1, ACHIEVEMENTS.length);
+	score += Math.min(ctx.achievementsUnlocked / achievementTotal, 1) * 18;
 	score += Math.min(ctx.focusHours / 100, 1) * 12;
 	score += Math.min(ctx.statSum / 220, 1) * 10;
-	score += Math.min(ctx.skillsUnlocked / 12, 1) * 6;
+	const skillTotal = Math.max(1, SKILLS.length);
+	score += Math.min(ctx.skillsUnlocked / skillTotal, 1) * 6;
 	score += Math.min((ctx.activeGoals + ctx.goalsFinishedOrArchived) / 18, 1) * 4;
 	if (score >= 90) return "S";
 	if (score >= 74) return "A";
