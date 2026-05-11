@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { motion } from "motion/react";
 import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen, Play, Pause, RotateCcw } from "lucide-react";
 import { Card } from "../components/ui/card";
@@ -71,6 +71,263 @@ function sortQuestsByDifficultyThenTitle(a: Quest, b: Quest) {
   const c = rank(a.difficulty) - rank(b.difficulty);
   if (c !== 0) return c;
   return a.title.localeCompare(b.title);
+}
+
+function QuestTimeframeGlyph({ timeframe }: { timeframe: Quest["timeframe"] }) {
+  switch (timeframe) {
+    case "daily":
+      return <Clock className="w-4 h-4" />;
+    case "weekly":
+      return <Calendar className="w-4 h-4" />;
+    case "monthly":
+      return <Target className="w-4 h-4" />;
+  }
+}
+
+function questDifficultyClass(difficulty: Quest["difficulty"]) {
+  switch (difficulty) {
+    case "Easy":
+      return "bg-green-500/20 text-green-400 border-green-500/30";
+    case "Medium":
+      return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    case "Hard":
+      return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+  }
+}
+
+type QuestCardProps = {
+  quest: Quest;
+  goals: Goal[];
+  goalIdFilter: string;
+  highlightQuestId: string | null;
+  timers: Record<string, QuestTimerState>;
+  setTimers: Dispatch<SetStateAction<Record<string, QuestTimerState>>>;
+  /** Parent increments every second so running timers repaint without remounting cards. */
+  timerTick: number;
+  onOpenDetail: (id: string) => void;
+  onCompleteQuest: (questId: string) => void;
+  onUndoQuest: (questId: string) => void;
+};
+
+function QuestCard({
+  quest,
+  goals,
+  goalIdFilter,
+  highlightQuestId,
+  timers,
+  setTimers,
+  timerTick,
+  onOpenDetail,
+  onCompleteQuest,
+  onUndoQuest,
+}: QuestCardProps) {
+  const goal = goals.find((g) => g.id === quest.goalId);
+  const displayTitle = formatQuestTitleForDisplay(quest.title, goal?.title);
+  const isHighlighted = Boolean(highlightQuestId && quest.id === highlightQuestId);
+  const timerEligible = quest.difficulty === "Medium" || quest.difficulty === "Hard";
+  const timer = timers[quest.id];
+  const elapsedMs =
+    timer && (timer.running && timer.startedAtMs != null ? timer.elapsedMs + (Date.now() - timer.startedAtMs) : timer.elapsedMs);
+  const startTimer = () => {
+    setTimers((prev) => {
+      const cur = prev[quest.id] || { running: false, startedAtMs: null, elapsedMs: 0 };
+      if (cur.running) return prev;
+      return {
+        ...prev,
+        [quest.id]: { running: true, startedAtMs: Date.now(), elapsedMs: cur.elapsedMs || 0 },
+      };
+    });
+  };
+
+  const stopTimer = () => {
+    setTimers((prev) => {
+      const cur = prev[quest.id];
+      if (!cur || !cur.running || cur.startedAtMs == null) return prev;
+      const nextElapsed = Math.max(0, cur.elapsedMs + (Date.now() - cur.startedAtMs));
+      return { ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: nextElapsed } };
+    });
+  };
+
+  const resetTimer = () => {
+    setTimers((prev) => ({ ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: 0 } }));
+  };
+
+  return (
+    <motion.div
+      id={`quest-card-${quest.id}`}
+      data-timer-tick={timerTick}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ scale: 1.02 }}
+      transition={{ type: "spring", stiffness: 300 }}
+      className={isHighlighted ? "rounded-xl ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0B0F1A] shadow-lg shadow-amber-500/20" : ""}
+    >
+      <Card
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenDetail(quest.id);
+          }
+        }}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button")) return;
+          onOpenDetail(quest.id);
+        }}
+        className={`overflow-hidden border transition-all text-left ${
+          MONGO_OBJECT_ID_RE.test(quest.id) ? "cursor-pointer" : "cursor-default"
+        } ${
+          quest.completed
+            ? "bg-green-500/10 border-green-500/30"
+            : `${goalIdFilter && quest.goalId === goalIdFilter ? "ring-2 ring-indigo-500/60" : ""} ${
+                quest.questTag === "recovery"
+                  ? "ring-2 ring-teal-500/40 border-teal-500/25"
+                  : quest.questTag === "welcome_bonus"
+                    ? "ring-2 ring-indigo-400/45 border-indigo-500/25"
+                    : quest.questTag === "streak_saver"
+                      ? "ring-2 ring-emerald-500/40 border-emerald-500/25"
+                      : ""
+              } bg-[#111827] border-purple-500/20 hover:border-purple-500/40`
+        }`}
+      >
+        <div className="p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="outline" className={`${questDifficultyClass(quest.difficulty)} text-xs`}>
+                  {quest.difficulty}
+                </Badge>
+                <Badge variant="outline" className="border-purple-500/30 text-purple-400 text-xs">
+                  <div className="flex items-center gap-1">
+                    <QuestTimeframeGlyph timeframe={quest.timeframe} />
+                    <span className="capitalize">{quest.timeframe}</span>
+                  </div>
+                </Badge>
+                {quest.isPenaltyActive && !quest.completed && (
+                  <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">Recovery quest</Badge>
+                )}
+                {quest.questTag === "recovery" && !quest.completed && (
+                  <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">Recovery quest</Badge>
+                )}
+                {quest.questTag === "welcome_bonus" && !quest.completed && (
+                  <Badge className="bg-indigo-500/25 text-indigo-100 border-indigo-400/40 text-xs">Welcome back bonus</Badge>
+                )}
+                {quest.questTag === "streak_saver" && !quest.completed && (
+                  <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-500/40 text-xs">Streak saver</Badge>
+                )}
+                {quest.comebackBoostApplies && !quest.completed && (
+                  <Badge className="bg-amber-500/20 text-amber-100 border-amber-500/40 text-xs">2× comeback XP</Badge>
+                )}
+              </div>
+              <h3 className={`text-lg font-bold ${quest.completed ? "text-green-400 line-through" : "text-white"}`}>
+                {displayTitle}
+              </h3>
+              <p className="text-sm text-gray-400 mt-1 leading-snug whitespace-pre-wrap line-clamp-6">
+                {quest.description
+                  ? quest.description
+                  : MONGO_OBJECT_ID_RE.test(quest.id)
+                    ? "Open the card for your full workout briefing from the program engine."
+                    : "—"}
+              </p>
+            </div>
+
+            {quest.completed && (
+              <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50 flex-shrink-0">
+                <Check className="w-6 h-6 text-white" />
+              </div>
+            )}
+          </div>
+
+          {goal && (
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-md bg-gradient-to-br ${goal.color.from} ${goal.color.to} flex items-center justify-center`}>
+                <Target className="w-3 h-3 text-white" />
+              </div>
+              <span className="text-xs text-gray-400">
+                Program: <span className="text-white">{goal.title}</span>
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-3 border-t border-purple-500/10">
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-indigo-400" />
+                  <span className="text-sm font-bold text-indigo-400">+{quest.xp} XP</span>
+                </div>
+                {quest.comebackBoostApplies && !quest.completed && (
+                  <span className="text-[11px] text-amber-200/90">Includes comeback multiplier on complete</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {timerEligible && !quest.completed && (
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                  <Badge variant="outline" className="border-slate-500/30 text-slate-200 text-[11px] tabular-nums">
+                    <Clock className="w-3 h-3 mr-1" />
+                    {formatElapsed(elapsedMs || 0)}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (timer?.running) stopTimer();
+                      else startTimer();
+                    }}
+                    aria-label={timer?.running ? "Stop timer" : "Start timer"}
+                  >
+                    {timer?.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      resetTimer();
+                    }}
+                    aria-label="Reset timer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+              {!quest.completed && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCompleteQuest(quest.id);
+                  }}
+                  size="sm"
+                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
+                >
+                  Complete
+                </Button>
+              )}
+              {quest.completed && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUndoQuest(quest.id);
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="border-purple-500/30 text-white hover:bg-white/5"
+                >
+                  Undo
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  );
 }
 
 function mapServerGoals(raw: any[]): Goal[] {
@@ -384,271 +641,6 @@ export default function Quests() {
   const weeklyXP = weeklyQuests.reduce((acc, q) => acc + (q.completed ? q.xp : 0), 0);
   const monthlyXP = monthlyQuests.reduce((acc, q) => acc + (q.completed ? q.xp : 0), 0);
 
-  const getTimeframeIcon = (timeframe: Quest["timeframe"]) => {
-    switch (timeframe) {
-      case "daily":
-        return <Clock className="w-4 h-4" />;
-      case "weekly":
-        return <Calendar className="w-4 h-4" />;
-      case "monthly":
-        return <Target className="w-4 h-4" />;
-    }
-  };
-
-  const getTimeframeColor = (timeframe: Quest["timeframe"]) => {
-    switch (timeframe) {
-      case "daily":
-        return "from-blue-500 to-cyan-500";
-      case "weekly":
-        return "from-purple-500 to-pink-500";
-      case "monthly":
-        return "from-orange-500 to-red-500";
-    }
-  };
-
-  const getDifficultyColor = (difficulty: Quest["difficulty"]) => {
-    switch (difficulty) {
-      case "Easy":
-        return "bg-green-500/20 text-green-400 border-green-500/30";
-      case "Medium":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "Hard":
-        return "bg-orange-500/20 text-orange-400 border-orange-500/30";
-    }
-  };
-
-  const QuestCard = ({
-    quest,
-    onOpenDetail,
-    highlightQuestId,
-  }: {
-    quest: Quest;
-    onOpenDetail: (id: string) => void;
-    highlightQuestId: string | null;
-  }) => {
-    const goal = goals.find((g) => g.id === quest.goalId);
-    const displayTitle = formatQuestTitleForDisplay(quest.title, goal?.title);
-    const isHighlighted = Boolean(highlightQuestId && quest.id === highlightQuestId);
-    const timerEligible = quest.difficulty === "Medium" || quest.difficulty === "Hard";
-    const timer = timers[quest.id];
-    const elapsedMs =
-      timer && (timer.running && timer.startedAtMs != null ? timer.elapsedMs + (Date.now() - timer.startedAtMs) : timer.elapsedMs);
-    const startTimer = () => {
-      setTimers((prev) => {
-        const cur = prev[quest.id] || { running: false, startedAtMs: null, elapsedMs: 0 };
-        if (cur.running) return prev;
-        return {
-          ...prev,
-          [quest.id]: { running: true, startedAtMs: Date.now(), elapsedMs: cur.elapsedMs || 0 },
-        };
-      });
-    };
-
-    const stopTimer = () => {
-      setTimers((prev) => {
-        const cur = prev[quest.id];
-        if (!cur || !cur.running || cur.startedAtMs == null) return prev;
-        const nextElapsed = Math.max(0, cur.elapsedMs + (Date.now() - cur.startedAtMs));
-        return { ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: nextElapsed } };
-      });
-    };
-
-    const resetTimer = () => {
-      setTimers((prev) => ({ ...prev, [quest.id]: { running: false, startedAtMs: null, elapsedMs: 0 } }));
-    };
-
-    return (
-      <motion.div
-        id={`quest-card-${quest.id}`}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.02 }}
-        transition={{ type: "spring", stiffness: 300 }}
-        className={isHighlighted ? "rounded-xl ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0B0F1A] shadow-lg shadow-amber-500/20" : ""}
-      >
-        <Card
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpenDetail(quest.id);
-            }
-          }}
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest("button")) return;
-            onOpenDetail(quest.id);
-          }}
-          className={`overflow-hidden border transition-all text-left ${
-            MONGO_OBJECT_ID_RE.test(quest.id) ? "cursor-pointer" : "cursor-default"
-          } ${
-            quest.completed
-              ? "bg-green-500/10 border-green-500/30"
-              : `${goalIdFilter && quest.goalId === goalIdFilter ? "ring-2 ring-indigo-500/60" : ""} ${
-                  quest.questTag === "recovery"
-                    ? "ring-2 ring-teal-500/40 border-teal-500/25"
-                    : quest.questTag === "welcome_bonus"
-                      ? "ring-2 ring-indigo-400/45 border-indigo-500/25"
-                      : quest.questTag === "streak_saver"
-                        ? "ring-2 ring-emerald-500/40 border-emerald-500/25"
-                        : ""
-                } bg-[#111827] border-purple-500/20 hover:border-purple-500/40`
-          }`}
-        >
-          <div className="p-5 space-y-4">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge
-                    variant="outline"
-                    className={`${getDifficultyColor(quest.difficulty)} text-xs`}
-                  >
-                    {quest.difficulty}
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="border-purple-500/30 text-purple-400 text-xs"
-                  >
-                    <div className="flex items-center gap-1">
-                      {getTimeframeIcon(quest.timeframe)}
-                      <span className="capitalize">{quest.timeframe}</span>
-                    </div>
-                  </Badge>
-                  {quest.isPenaltyActive && !quest.completed && (
-                    <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">
-                      Recovery quest
-                    </Badge>
-                  )}
-                  {quest.questTag === "recovery" && !quest.completed && (
-                    <Badge className="bg-teal-500/20 text-teal-100 border-teal-500/40 text-xs">Recovery quest</Badge>
-                  )}
-                  {quest.questTag === "welcome_bonus" && !quest.completed && (
-                    <Badge className="bg-indigo-500/25 text-indigo-100 border-indigo-400/40 text-xs">Welcome back bonus</Badge>
-                  )}
-                  {quest.questTag === "streak_saver" && !quest.completed && (
-                    <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-500/40 text-xs">Streak saver</Badge>
-                  )}
-                  {quest.comebackBoostApplies && !quest.completed && (
-                    <Badge className="bg-amber-500/20 text-amber-100 border-amber-500/40 text-xs">2× comeback XP</Badge>
-                  )}
-                </div>
-                <h3
-                  className={`text-lg font-bold ${
-                    quest.completed ? "text-green-400 line-through" : "text-white"
-                  }`}
-                >
-                  {displayTitle}
-                </h3>
-                <p className="text-sm text-gray-400 mt-1 leading-snug whitespace-pre-wrap line-clamp-6">
-                  {quest.description
-                    ? quest.description
-                    : MONGO_OBJECT_ID_RE.test(quest.id)
-                      ? "Open the card for your full workout briefing from the program engine."
-                      : "—"}
-                </p>
-              </div>
-
-              {quest.completed && (
-                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50 flex-shrink-0">
-                  <Check className="w-6 h-6 text-white" />
-                </div>
-              )}
-            </div>
-
-            {/* Goal Link */}
-            {goal && (
-              <div className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-md bg-gradient-to-br ${goal.color.from} ${goal.color.to} flex items-center justify-center`}>
-                  <Target className="w-3 h-3 text-white" />
-                </div>
-                <span className="text-xs text-gray-400">
-                  Program: <span className="text-white">{goal.title}</span>
-                </span>
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-3 border-t border-purple-500/10">
-              <div className="flex items-center gap-4">
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <Zap className="w-4 h-4 text-indigo-400" />
-                    <span className="text-sm font-bold text-indigo-400">+{quest.xp} XP</span>
-                  </div>
-                  {quest.comebackBoostApplies && !quest.completed && (
-                    <span className="text-[11px] text-amber-200/90">Includes comeback multiplier on complete</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-              {timerEligible && !quest.completed && (
-                <div className="hidden sm:flex items-center gap-1.5 mr-1">
-                  <Badge variant="outline" className="border-slate-500/30 text-slate-200 text-[11px] tabular-nums">
-                    <Clock className="w-3 h-3 mr-1" />
-                    {formatElapsed(elapsedMs || 0)}
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (timer?.running) stopTimer();
-                      else startTimer();
-                    }}
-                    aria-label={timer?.running ? "Stop timer" : "Start timer"}
-                  >
-                    {timer?.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-slate-500/30 text-white hover:bg-white/5 px-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      resetTimer();
-                    }}
-                    aria-label="Reset timer"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </Button>
-                </div>
-              )}
-              {!quest.completed && (
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCompleteQuest(quest.id);
-                  }}
-                  size="sm"
-                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
-                >
-                  Complete
-                </Button>
-              )}
-              {quest.completed && (
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUndoQuest(quest.id);
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className="border-purple-500/30 text-white hover:bg-white/5"
-                >
-                  Undo
-                </Button>
-              )}
-              </div>
-            </div>
-          </div>
-        </Card>
-      </motion.div>
-    );
-  };
-
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
       {/* Title row + expandable program modules (schedule & movement library — not quest instances) */}
@@ -910,8 +902,15 @@ export default function Quests() {
                   <QuestCard
                     key={quest.id}
                     quest={quest}
-                    onOpenDetail={openQuestDetail}
+                    goals={goals}
+                    goalIdFilter={goalIdFilter}
                     highlightQuestId={highlightQuestParam}
+                    timers={timers}
+                    setTimers={setTimers}
+                    timerTick={nowTick}
+                    onOpenDetail={openQuestDetail}
+                    onCompleteQuest={handleCompleteQuest}
+                    onUndoQuest={handleUndoQuest}
                   />
                 ))}
               </div>
@@ -927,8 +926,15 @@ export default function Quests() {
                   <QuestCard
                     key={quest.id}
                     quest={quest}
-                    onOpenDetail={openQuestDetail}
+                    goals={goals}
+                    goalIdFilter={goalIdFilter}
                     highlightQuestId={highlightQuestParam}
+                    timers={timers}
+                    setTimers={setTimers}
+                    timerTick={nowTick}
+                    onOpenDetail={openQuestDetail}
+                    onCompleteQuest={handleCompleteQuest}
+                    onUndoQuest={handleUndoQuest}
                   />
                 ))}
               </div>
@@ -944,8 +950,15 @@ export default function Quests() {
                   <QuestCard
                     key={quest.id}
                     quest={quest}
-                    onOpenDetail={openQuestDetail}
+                    goals={goals}
+                    goalIdFilter={goalIdFilter}
                     highlightQuestId={highlightQuestParam}
+                    timers={timers}
+                    setTimers={setTimers}
+                    timerTick={nowTick}
+                    onOpenDetail={openQuestDetail}
+                    onCompleteQuest={handleCompleteQuest}
+                    onUndoQuest={handleUndoQuest}
                   />
                 ))}
               </div>
@@ -961,8 +974,15 @@ export default function Quests() {
                   <QuestCard
                     key={quest.id}
                     quest={quest}
-                    onOpenDetail={openQuestDetail}
+                    goals={goals}
+                    goalIdFilter={goalIdFilter}
                     highlightQuestId={highlightQuestParam}
+                    timers={timers}
+                    setTimers={setTimers}
+                    timerTick={nowTick}
+                    onOpenDetail={openQuestDetail}
+                    onCompleteQuest={handleCompleteQuest}
+                    onUndoQuest={handleUndoQuest}
                   />
                 ))}
               </div>
