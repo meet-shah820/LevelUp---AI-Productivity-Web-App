@@ -139,8 +139,7 @@ export function Layout() {
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Quests", href: "/quests", icon: Target },
       { name: "Training", href: "/goals", icon: Flag },
-      // Skills is visible for all tiers again
-      { name: "Progress", href: "/skills", icon: Zap },
+      { name: "Achievements", href: "/achievements", icon: Trophy },
       // Pro+ feature example
       ...(t >= 2 ? [{ name: "Analytics", href: "/analytics", icon: BarChart3 }] : []),
       { name: "Streak", href: "/streak", icon: Calendar },
@@ -178,9 +177,9 @@ export function Layout() {
         break;
       case "achievement":
         if (it.achievementId) {
-          navigate(`/skills?highlightAchievement=${encodeURIComponent(it.achievementId)}`);
+          navigate(`/achievements?highlight=${encodeURIComponent(it.achievementId)}`);
         } else {
-          navigate("/skills");
+          navigate("/achievements");
         }
         break;
       case "level":

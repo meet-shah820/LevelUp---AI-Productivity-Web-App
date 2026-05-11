@@ -17,7 +17,7 @@ export default function Terms() {
 					<li>Create training programs</li>
 					<li>Complete daily, weekly, and monthly fitness quests</li>
 					<li>Log training-focus sessions and streaks</li>
-					<li>Unlock achievements and skill-tree perks</li>
+					<li>Unlock training achievements and Hunter rank milestones</li>
 				</ul>
 			</section>
 

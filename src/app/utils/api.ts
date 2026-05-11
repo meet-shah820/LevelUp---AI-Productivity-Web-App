@@ -249,12 +249,6 @@ export async function getAnalytics() {
 	return res.json();
 }
 
-export async function getSkills() {
-	const res = await apiFetch("/api/skills");
-	if (!res.ok) throw new Error("Failed to load skills");
-	return res.json();
-}
-
 export const PROFILE_UPDATED_EVENT = "app:profile-updated";
 
 /** Fired after server-side rank may have changed (quests, focus, goals, achievements). */

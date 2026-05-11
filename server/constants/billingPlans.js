@@ -67,7 +67,7 @@ export const TIER_CATALOG = [
 		monthlyPriceCents: 0,
 		features: [
 			"Dashboard, quests, goals, and focus mode",
-			"Skills, achievements, streak, and leaderboard",
+			"Achievements, streak, and leaderboard",
 			"Core notifications and profile",
 		],
 	},

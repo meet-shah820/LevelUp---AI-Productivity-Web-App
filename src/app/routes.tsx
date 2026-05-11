@@ -3,9 +3,9 @@ import { Layout } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Quests from "./pages/Quests";
 import Goals from "./pages/Goals";
-import Skills from "./pages/Skills";
 import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
+import Achievements from "./pages/Achievements";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
 import Auth from "./pages/Auth";
@@ -26,11 +26,10 @@ function RedirectToTerms() {
 	return <Navigate to="/terms" replace />;
 }
 
-function RedirectAchievementsToProgress() {
-  // Preserve old deep-link highlight param when possible.
+function RedirectSkillsToAchievements() {
   const qs = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-  const highlight = qs?.get("highlight");
-  const to = highlight ? `/skills?highlightAchievement=${encodeURIComponent(highlight)}` : "/skills";
+  const h = qs?.get("highlightAchievement") || qs?.get("highlight");
+  const to = h ? `/achievements?highlight=${encodeURIComponent(h)}` : "/achievements";
   return <Navigate to={to} replace />;
 }
 
@@ -60,12 +59,12 @@ export const router = createBrowserRouter([
           { index: true, Component: Dashboard },
           { path: "quests", Component: Quests },
           { path: "goals", Component: Goals },
-          { path: "skills", Component: Skills },
+          { path: "skills", Component: RedirectSkillsToAchievements },
           { path: "analytics", Component: Analytics },
           { path: "streak", Component: Streak },
           { path: "leaderboard", Component: Leaderboard },
           { path: "profile", Component: Profile },
-          { path: "achievements", Component: RedirectAchievementsToProgress },
+          { path: "achievements", Component: Achievements },
           { path: "pricing", Component: Pricing },
           { path: "settings", Component: Settings },
         ],

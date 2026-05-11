@@ -2159,6 +2159,35 @@ const RANK_LETTERS = new Set(["E", "D", "C", "B", "A", "S"]);
 /**
  * Gemini evaluates holistic progress and returns a single rank letter, or null on failure.
  */
+/**
+ * Dev helper: brainstorm achievement id + copy for this fitness quest app (no DB writes).
+ * Requires GEMINI_API_KEY. Returns null if unavailable.
+ */
+export async function suggestTrainingAchievementIdeas() {
+	if (!genAI) return null;
+	const model = genAI.getGenerativeModel({
+		model: "gemini-1.5-flash",
+		generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+	});
+	const prompt = `This app is a fitness-only training RPG: users set gym/conditioning goals, get AI quest roadmaps, complete daily/weekly/monthly quests, earn XP and Hunter ranks (E–S), streaks, and program modules grounded in an open fitness library.
+
+Suggest 8 NEW achievement ideas (not generic life hacks). Each must be measurable from: quest completions, total XP, level, consecutive activity streak days, having an active training goal, or program/library metadata.
+
+Reply ONLY valid JSON array (no markdown), max 8 objects, each:
+{"id":"snake_case_id","name":"short title","description":"one sentence","rarity":"common|rare|epic|legendary|mythic","unlockHint":"one phrase for engineers, e.g. streak_days >= 7"}`;
+
+	try {
+		const result = await model.generateContent(prompt);
+		const text = result.response.text();
+		const start = text.indexOf("[");
+		const end = text.lastIndexOf("]");
+		if (start === -1 || end === -1) return null;
+		return JSON.parse(text.slice(start, end + 1));
+	} catch {
+		return null;
+	}
+}
+
 export async function evaluateHunterRank(contextSnapshot) {
 	if (!genAI) return null;
 	const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -2167,7 +2196,7 @@ export async function evaluateHunterRank(contextSnapshot) {
 Valid ranks ONLY: E, D, C, B, A, S (E = weakest beginner, S = apex — rarest).
 
 Be STRICT:
-- S requires near-maximum dedication: very high level OR massive quest volume, multiple achievements, strong attributes, serious focus hours, and broad skill unlocks. Casual players never get S.
+- S requires near-maximum dedication: very high level OR massive quest volume, a wide set of achievements unlocked, strong attributes, serious focus hours, and long consistency streaks. Casual players never get S.
 - Most early accounts should be E or D.
 - A/B are late-game; C is mid-game.
 

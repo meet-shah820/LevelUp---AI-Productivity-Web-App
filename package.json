@@ -8,7 +8,8 @@
     "dev": "concurrently \"vite\" \"node server/index.js\"",
     "stripe:bootstrap": "node server/scripts/stripeBootstrapPrices.js",
     "stripe:verify": "node server/scripts/verifyStripePrices.js",
-    "ingest:fitness": "node server/scripts/ingestFitnessLibrary.js"
+    "ingest:fitness": "node server/scripts/ingestFitnessLibrary.js",
+    "suggest:achievements": "node server/scripts/suggestTrainingAchievements.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

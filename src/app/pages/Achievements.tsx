@@ -1,30 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
-import { Lock, Check, Award, Trophy } from "lucide-react";
+import { Lock, Check, Trophy } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { getAchievements, RANK_UPDATED_EVENT } from "../utils/api";
 
 type Achievement = {
-  id: string | number;
+  id: string;
   name: string;
   description: string;
-  icon?: string;
-  unlocked?: boolean;
-  unlockedDate?: string;
   rarity: "common" | "rare" | "epic" | "legendary" | "mythic";
-  progress?: number;
-  maxProgress?: number;
-  /** When set, a goal in this category is required before this achievement can unlock. */
+  unlocked?: boolean;
   blockedByCategory?: string;
 };
 
 export default function Achievements() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const highlightAchievementId = searchParams.get("highlight");
+  const highlightAchievementId =
+    searchParams.get("highlight") || searchParams.get("highlightAchievement");
 
-  const [serverData, setServerData] = useState<{ unlocked: Achievement[]; locked: Achievement[]; stats: any } | null>(null);
+  const [serverData, setServerData] = useState<{ unlocked: Achievement[]; locked: Achievement[] } | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -32,10 +29,11 @@ export default function Achievements() {
         setServerData(res);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
       } catch {
-        // ignore; fallback to static rendering with none
+        setServerData(null);
       }
     })();
   }, []);
+
   const achievements: Achievement[] = useMemo(() => {
     const merged: Achievement[] = [
       ...(serverData?.unlocked?.map((a) => ({ ...a, unlocked: true })) || []),
@@ -59,6 +57,7 @@ export default function Achievements() {
         (prev) => {
           const n = new URLSearchParams(prev);
           n.delete("highlight");
+          n.delete("highlightAchievement");
           return n;
         },
         { replace: true }
@@ -115,9 +114,10 @@ export default function Achievements() {
     },
   };
 
+  const pct = stats.total > 0 ? (stats.unlocked / stats.total) * 100 : 0;
+
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -125,61 +125,53 @@ export default function Achievements() {
       >
         <h1 className="text-3xl font-bold text-white">Achievements</h1>
         <p className="text-gray-400">
-          Badges for consistency, milestones, and hunter rank — show off your training grind
+          Training milestones for your program: quests, streaks, XP, and Hunter rank
         </p>
       </motion.div>
 
-      {/* Stats */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+        transition={{ delay: 0.08 }}
       >
         <Card className="bg-gradient-to-br from-[#111827] to-[#1F2937] border-purple-500/30 shadow-xl shadow-purple-500/20">
           <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center shadow-lg shadow-yellow-500/50">
                   <Trophy className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white">
+                  <h2 className="text-2xl font-bold text-white tabular-nums">
                     {stats.unlocked} / {stats.total}
                   </h2>
-                  <p className="text-sm text-gray-400">Achievements Unlocked</p>
+                  <p className="text-sm text-gray-400">Unlocked</p>
                 </div>
+              </div>
+              <div className="min-w-[200px] flex-1 max-w-md">
+                <Progress value={pct} className="h-2" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               <div className="p-4 rounded-xl bg-gray-500/10 border border-gray-500/30 text-center">
-                <p className="text-2xl font-bold text-gray-400 mb-1">
-                  {stats.byRarity.common}
-                </p>
+                <p className="text-2xl font-bold text-gray-400 mb-1">{stats.byRarity.common}</p>
                 <p className="text-xs text-gray-500">Common</p>
               </div>
               <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 text-center">
-                <p className="text-2xl font-bold text-blue-400 mb-1">
-                  {stats.byRarity.rare}
-                </p>
+                <p className="text-2xl font-bold text-blue-400 mb-1">{stats.byRarity.rare}</p>
                 <p className="text-xs text-gray-500">Rare</p>
               </div>
               <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center">
-                <p className="text-2xl font-bold text-purple-400 mb-1">
-                  {stats.byRarity.epic}
-                </p>
+                <p className="text-2xl font-bold text-purple-400 mb-1">{stats.byRarity.epic}</p>
                 <p className="text-xs text-gray-500">Epic</p>
               </div>
               <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-center">
-                <p className="text-2xl font-bold text-yellow-400 mb-1">
-                  {stats.byRarity.legendary}
-                </p>
+                <p className="text-2xl font-bold text-yellow-400 mb-1">{stats.byRarity.legendary}</p>
                 <p className="text-xs text-gray-500">Legendary</p>
               </div>
               <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/40 text-center col-span-2 sm:col-span-1 ring-1 ring-red-500/25">
-                <p className="text-2xl font-bold text-red-400 mb-1">
-                  {stats.byRarity.mythic}
-                </p>
+                <p className="text-2xl font-bold text-red-400 mb-1">{stats.byRarity.mythic}</p>
                 <p className="text-xs text-red-200/85">Mythic</p>
               </div>
             </div>
@@ -187,13 +179,9 @@ export default function Achievements() {
         </Card>
       </motion.div>
 
-      {/* Achievements Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {achievements.map((achievement, index) => {
           const colors = rarityColors[achievement.rarity] ?? rarityColors.common;
-          const progressPercentage = achievement.maxProgress
-            ? ((achievement.progress || 0) / achievement.maxProgress) * 100
-            : 0;
           const aid = String(achievement.id);
           const isHighlighted = Boolean(highlightAchievementId && aid === highlightAchievementId);
 
@@ -203,7 +191,7 @@ export default function Achievements() {
               id={`achievement-card-${aid}`}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 + index * 0.03 }}
+              transition={{ delay: 0.12 + index * 0.02 }}
               className={
                 isHighlighted
                   ? "rounded-xl ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0B0F1A] shadow-lg shadow-amber-500/20"
@@ -215,20 +203,18 @@ export default function Achievements() {
                   achievement.unlocked ? `shadow-xl ${colors.glow}` : "opacity-60"
                 } hover:scale-105 transition-all group relative overflow-hidden`}
               >
-                {/* Background glow effect */}
                 {achievement.unlocked && (
                   <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
 
                 <div className="relative z-10 p-5 space-y-4">
-                  {/* Icon and Status */}
                   <div className="flex items-start justify-between">
                     <div
-                      className={`text-5xl ${
-                        achievement.unlocked ? "" : "grayscale opacity-50"
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        achievement.unlocked ? "bg-white/10" : "bg-gray-800/80"
                       }`}
                     >
-                      {achievement.icon}
+                      <Trophy className={`w-5 h-5 ${achievement.unlocked ? "text-yellow-300" : "text-gray-500"}`} />
                     </div>
                     {achievement.unlocked ? (
                       <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50">
@@ -241,7 +227,6 @@ export default function Achievements() {
                     )}
                   </div>
 
-                  {/* Info */}
                   <div>
                     <h3
                       className={`font-bold mb-1 ${
@@ -258,28 +243,9 @@ export default function Achievements() {
                     ) : null}
                   </div>
 
-                  {/* Rarity Badge */}
                   <div className="flex items-center justify-between">
-                    <span className={`text-xs font-medium ${colors.text} uppercase`}>
-                      {achievement.rarity}
-                    </span>
-                    {achievement.unlocked && achievement.unlockedDate && (
-                      <span className="text-xs text-gray-500">{achievement.unlockedDate}</span>
-                    )}
+                    <span className={`text-xs font-medium ${colors.text} uppercase`}>{achievement.rarity}</span>
                   </div>
-
-                  {/* Progress Bar for Locked Achievements */}
-                  {!achievement.unlocked && achievement.maxProgress && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">Progress</span>
-                        <span className={colors.text}>
-                          {achievement.progress} / {achievement.maxProgress}
-                        </span>
-                      </div>
-                      <Progress value={progressPercentage} className="h-1.5" />
-                    </div>
-                  )}
                 </div>
               </Card>
             </motion.div>
