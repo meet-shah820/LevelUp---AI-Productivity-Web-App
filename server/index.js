@@ -23,6 +23,7 @@ import "./jobs/cron.js";
 import "./jobs/penalties.js";
 import { attachUser, requireAuth } from "./middleware/auth.js";
 import { attachLeaderboardWebSocket } from "./services/leaderboardHub.js";
+import User from "./models/User.js";
 
 loadProjectEnv({ mode: "server" });
 
@@ -42,9 +43,16 @@ app.post("/api/delete-account", requireAuth, deleteAccountAndData);
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/productivity_app";
 mongoose
 	.connect(mongoUri, { dbName: "productivity_app" })
-	.then(() => {
+	.then(async () => {
 		// eslint-disable-next-line no-console
 		console.log("✅ MongoDB connected");
+		try {
+			await User.updateMany({ googleId: null }, { $unset: { googleId: "" } });
+			await User.syncIndexes();
+		} catch (idxErr) {
+			// eslint-disable-next-line no-console
+			console.error("User index cleanup / sync failed (sign-up may still fail until indexes are fixed)", idxErr);
+		}
 	})
 	.catch((err) => {
 		// eslint-disable-next-line no-console

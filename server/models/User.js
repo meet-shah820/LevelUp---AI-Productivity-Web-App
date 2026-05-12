@@ -16,8 +16,8 @@ const UserSchema = new mongoose.Schema(
 		password: { type: String },
 		/** Anonymous app trial; password null; not the same as OAuth (googleId set there). */
 		isGuest: { type: Boolean, default: false },
-		/** Google OAuth subject ("sub") - unique per Google account */
-		googleId: { type: String, default: null, unique: true, sparse: true, index: true },
+		/** Google OAuth subject ("sub") — only set for Google-linked accounts (omit for password users). */
+		googleId: { type: String },
 		/** Shown in UI; falls back to formatted username if empty */
 		displayName: { type: String, default: "" },
 		email: { type: String, default: "" },
@@ -65,6 +65,9 @@ const UserSchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 );
+
+/** Unique only when `googleId` is a real string; many users omit the field (password sign-up). */
+UserSchema.index({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: "string" } } });
 
 export default mongoose.model("User", UserSchema);
 
