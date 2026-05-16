@@ -50,6 +50,15 @@ router.get("/", async (req, res) => {
 			return res.json({ showModal: false, reportWeekId });
 		}
 
+		// Accounts created after the report week began never saw that full Monday–Sunday;
+		// skip the recap (and ack this id so we don't rebuild every visit).
+		const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+		if (createdAt && createdAt > weekStart) {
+			user.weeklyReportAckWeekId = reportWeekId;
+			await user.save();
+			return res.json({ showModal: false, reportWeekId });
+		}
+
 		const hist = await History.find({
 			userId: user._id,
 			occurredAt: { $gte: weekStart, $lte: weekEnd },
