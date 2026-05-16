@@ -6,6 +6,7 @@ import { ACHIEVEMENTS } from "../data/achievements.js";
 import AchievementUnlock from "../models/AchievementUnlock.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
+import { meetsMinTierWithReq } from "../utils/billingTier.js";
 import { categoriesFromGoals, isAchievementApplicable } from "../utils/achievementAvailability.js";
 
 const router = express.Router();
@@ -25,7 +26,9 @@ router.get("/", async (req, res) => {
 
 		// ensure unlocks are recorded (so Profile recent achievements can be real)
 		await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });
-		const rank = await recalculateAndSaveUserRank(user._id, { preferGemini: true });
+		const rank = await recalculateAndSaveUserRank(user._id, {
+			preferGemini: meetsMinTierWithReq(user, "elite", req),
+		});
 		const unlockDocs = await AchievementUnlock.find({ userId: user._id }).lean();
 		const unlockedIds = new Set(unlockDocs.map((d) => d.achievementId));
 

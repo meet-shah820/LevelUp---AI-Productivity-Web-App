@@ -10,7 +10,7 @@ import {
 	type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getAnalytics, getGoals } from "../utils/api";
+import { getGoals, getProfile } from "../utils/api";
 import { ONBOARDING_GOAL_CREATED, ONBOARDING_QUEST_COMPLETED } from "./tutorialEvents";
 import { readOnboarding, writeOnboarding, type OnboardingPersisted } from "./tutorialStorage";
 import { TUTORIAL_STEPS, type TutorialStepDef } from "./tutorialSteps";
@@ -96,10 +96,10 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 				return;
 			}
 			try {
-				const [g, a] = await Promise.all([getGoals(), getAnalytics()]);
+				const [g, p] = await Promise.all([getGoals(), getProfile()]);
 				if (cancelled) return;
 				const goalCount = Array.isArray((g as { goals?: unknown }).goals) ? (g as { goals: unknown[] }).goals.length : 0;
-				const qc = Number((a as { stats?: { questsCompleted?: number } })?.stats?.questsCompleted ?? 0);
+				const qc = Number((p as { quickStats?: { questsCompleted?: number } })?.quickStats?.questsCompleted ?? 0);
 
 				let nextStored: OnboardingPersisted = stored || {
 					started: false,
@@ -147,9 +147,9 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 		let cancelled = false;
 		(async () => {
 			try {
-				const a = await getAnalytics();
+				const p = await getProfile();
 				if (cancelled) return;
-				const qc = Number(a?.stats?.questsCompleted ?? 0);
+				const qc = Number((p as { quickStats?: { questsCompleted?: number } })?.quickStats?.questsCompleted ?? 0);
 				if (qc >= 1 && stepIndex === 5) advanceToIndex(6);
 			} catch {
 				/* ignore */

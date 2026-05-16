@@ -95,6 +95,15 @@ export default function Pricing() {
 		}
 	}, [searchParams, setSearchParams]);
 
+	useEffect(() => {
+		const need = searchParams.get("need");
+		if (!loaded || !need) return;
+		const t = window.setTimeout(() => {
+			document.getElementById(`pricing-tier-${need}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+		}, 120);
+		return () => window.clearTimeout(t);
+	}, [loaded, searchParams]);
+
 	async function subscribe(tierId: BillingTierId) {
 		if (tierId === "free") return;
 		if (!readSignedIn()) {
@@ -205,6 +214,7 @@ export default function Pricing() {
 							transition={{ delay: 0.05 * i }}
 						>
 							<Card
+								id={`pricing-tier-${tier.id}`}
 								className={`relative h-full flex flex-col p-6 bg-[#111827] border ${
 									showHighlight
 										? "border-indigo-400/50 shadow-lg shadow-indigo-500/20"

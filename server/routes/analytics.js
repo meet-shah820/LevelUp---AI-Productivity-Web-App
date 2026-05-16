@@ -2,6 +2,7 @@ import express from "express";
 import History from "../models/History.js";
 import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
+import { meetsMinTierWithReq } from "../utils/billingTier.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
 
 const router = express.Router();
@@ -13,6 +14,13 @@ async function getUser(req) {
 router.get("/", async (req, res) => {
 	try {
 		const user = await getUser(req);
+		if (!meetsMinTierWithReq(user, "pro", req)) {
+			return res.status(403).json({
+				error: "tier_required",
+				needsTier: "pro",
+				message: "Analytics requires Pro or Elite.",
+			});
+		}
 		const now = new Date();
 		const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 		monthStart.setHours(0, 0, 0, 0);

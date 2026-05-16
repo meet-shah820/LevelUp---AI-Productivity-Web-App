@@ -17,6 +17,7 @@ import RefundPolicy from "./pages/legal/RefundPolicy";
 import { ProtectedLayout } from "./components/ProtectedLayout";
 import Streak from "./pages/Streak";
 import Leaderboard from "./pages/Leaderboard";
+import { TierProtectedRoute } from "./components/TierProtectedRoute";
 
 function RedirectToPrivacy() {
 	return <Navigate to="/privacy" replace />;
@@ -60,7 +61,11 @@ export const router = createBrowserRouter([
           { path: "quests", Component: Quests },
           { path: "goals", Component: Goals },
           { path: "skills", Component: RedirectSkillsToAchievements },
-          { path: "analytics", Component: Analytics },
+          { path: "analytics", element: (
+            <TierProtectedRoute minTier="pro">
+              <Analytics />
+            </TierProtectedRoute>
+          ) },
           { path: "streak", Component: Streak },
           { path: "leaderboard", Component: Leaderboard },
           { path: "profile", Component: Profile },

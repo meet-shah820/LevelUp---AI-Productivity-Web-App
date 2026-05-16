@@ -17,8 +17,11 @@ import {
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { getProfile, getRecentHistory, patchProfile, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 
 export default function Profile() {
+  const { effectiveTier } = useEffectiveTier();
   const [data, setData] = useState<any>(null);
   const [recentItems, setRecentItems] = useState<
     { id: string; type: "quest" | "level" | "achievement" | "focus" | "penalty"; message: string; xp?: number; at: string }[]
@@ -191,6 +194,15 @@ export default function Profile() {
                     <Badge variant="outline" className="border-purple-500/30 text-purple-400">
                       Level {user.level}
                     </Badge>
+                    {tierMeetsMinimum(effectiveTier, TIER_FOR.foundingBadgeFlair) ? (
+                      <Badge
+                        variant="outline"
+                        className="border-violet-400/35 text-violet-200 bg-violet-500/10"
+                        title="Founding flair for paid members (Starter or higher)"
+                      >
+                        Founder
+                      </Badge>
+                    ) : null}
                   </div>
 
                   <p className="text-sm text-purple-400 mb-4">{user.title}</p>

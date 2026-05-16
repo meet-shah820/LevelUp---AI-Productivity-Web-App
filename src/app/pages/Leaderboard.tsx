@@ -11,6 +11,8 @@ import {
 } from "../utils/api";
 import { setAuthReturnPath } from "../utils/authRedirect";
 import { Radio, Trophy } from "lucide-react";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
@@ -40,6 +42,7 @@ function rowAccent(position: number): string {
 }
 
 export default function Leaderboard() {
+	const { effectiveTier } = useEffectiveTier();
 	const [data, setData] = useState<LeaderboardResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -159,6 +162,14 @@ export default function Leaderboard() {
 				<div className="flex flex-wrap items-center gap-3 mb-2">
 					<Trophy className="w-8 h-8 text-amber-400" aria-hidden />
 					<h1 className="text-2xl md:text-3xl font-semibold text-white tracking-tight">Leaderboard</h1>
+					{tierMeetsMinimum(effectiveTier, TIER_FOR.leaderboardEliteBadge) ? (
+						<span
+							className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-gradient-to-r from-fuchsia-500/20 to-violet-600/25 border-fuchsia-400/40 text-fuchsia-100"
+							title="Elite subscription leaderboard flair"
+						>
+							Elite
+						</span>
+					) : null}
 					<span
 						className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${
 							live && !googleAccountRequired

@@ -24,6 +24,7 @@ import {
 import { computeCurrentRotationMovementRows } from "../services/programModulesRotation.js";
 import { assessGoalFitnessRelevance } from "../services/goalTopicGate.js";
 import { buildAiQuestPlanContext } from "../services/questPlanContext.js";
+import { billingTierRank, meetsMinTierWithReq, adminPreviewBypassActive } from "../utils/billingTier.js";
 
 const router = express.Router();
 
@@ -99,6 +100,16 @@ function targetCombinedQuestCount(months) {
 		QUEST_TOTAL_MAX,
 		Math.max(QUEST_TOTAL_MIN, Math.round(10 + ((clamped - 1) / 35) * 20))
 	);
+}
+
+/** Pro+: full cap; Starter: tighter; Free: tighter (matches catalog tier limits). Admin preview: full cap. */
+function cappedQuestTargetCombinedCount(months, user, req) {
+	const base = targetCombinedQuestCount(months);
+	if (req && adminPreviewBypassActive(req)) return base;
+	const r = billingTierRank(user);
+	if (r >= 2) return base;
+	if (r >= 1) return Math.min(base, 22);
+	return Math.min(base, 14);
 }
 
 function searchSeedAllocation(Dlen, Wlen, Mlen, target) {
@@ -588,10 +599,14 @@ async function buildQuestDocumentsFromPlan(
 	plan,
 	deadline,
 	supplementCtx = null,
-	now = new Date()
+	now = new Date(),
+	userForTierCap = null,
+	reqForTierCap = null
 ) {
 	const months = estimateGoalHorizonMonths(deadline, "");
-	const targetQuestCount = targetCombinedQuestCount(months);
+	const targetQuestCount = userForTierCap
+		? cappedQuestTargetCombinedCount(months, userForTierCap, reqForTierCap)
+		: targetCombinedQuestCount(months);
 	let { seedPlan, daysToSeed, weeksToSeed, monthsToSeed } = allocateQuestSeedWindowsWithPlan(months, plan);
 	({ daysToSeed, weeksToSeed, monthsToSeed } = reconcileWindowsWithTemplateCounts(
 		daysToSeed,
@@ -634,10 +649,10 @@ async function buildQuestDocumentsFromPlan(
 
 /**
  * Regenerate AI plan, replace incomplete quests from today onward, refresh program modules cache.
- * @param {{ skipTopicGate?: boolean, plannerNote?: string }} options
+ * @param {{ skipTopicGate?: boolean, plannerNote?: string, req?: import("express").Request }} options
  */
 async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
-	const { skipTopicGate = false, plannerNote } = options;
+	const { skipTopicGate = false, plannerNote, req: reqTier } = options;
 	const title = goalDoc.title;
 	const description = String(goalDoc.description || "").trim().slice(0, 2000);
 	const userProfile = goalDoc.userProfile && typeof goalDoc.userProfile === "object" ? goalDoc.userProfile : null;
@@ -699,13 +714,22 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 		date: { $gte: boundary },
 	});
 
-	const questsToInsert = await buildQuestDocumentsFromPlan(user._id, goalDoc._id, plan, deadline, {
-		goalTitle: title,
-		description,
-		currentLevel: userLevel,
-		userDbContext,
-		libraryContext,
-	});
+	const questsToInsert = await buildQuestDocumentsFromPlan(
+		user._id,
+		goalDoc._id,
+		plan,
+		deadline,
+		{
+			goalTitle: title,
+			description,
+			currentLevel: userLevel,
+			userDbContext,
+			libraryContext,
+		},
+		new Date(),
+		user,
+		reqTier ?? null
+	);
 	if (questsToInsert.length) {
 		await Quest.insertMany(questsToInsert);
 	}
@@ -752,6 +776,13 @@ router.get("/", async (req, res) => {
 router.get("/program-modules", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
+		if (!meetsMinTierWithReq(user, "starter", req)) {
+			return res.status(403).json({
+				error: "tier_required",
+				needsTier: "starter",
+				message: "Program schedule insights require Starter or higher.",
+			});
+		}
 		let goals = await Goal.find({ userId: user._id, status: "active" })
 			.select("title description deadline createdAt fitnessPlanSnapshot programModulesCache userProfile")
 			.sort({ createdAt: 1 })
@@ -834,6 +865,14 @@ router.post("/", async (req, res) => {
 
 		const user = await getUserForReq(req);
 		const priorActiveGoalCount = await Goal.countDocuments({ userId: user._id, status: "active" });
+		if (priorActiveGoalCount >= 1 && !meetsMinTierWithReq(user, "starter", req)) {
+			return res.status(403).json({
+				error: "tier_required",
+				needsTier: "starter",
+				code: "multi_goals_starter_only",
+				message: "Adding another active program requires Starter or higher.",
+			});
+		}
 		const goalCategory = "Fitness";
 		const deadline = parseOptionalDate(rawDeadline);
 		const description = String(rawDescription || "").trim().slice(0, 2000);
@@ -894,13 +933,22 @@ router.post("/", async (req, res) => {
 		}
 		await Goal.findByIdAndUpdate(goal._id, snapshotPatch);
 
-		const questsToInsert = await buildQuestDocumentsFromPlan(user._id, goal._id, plan, deadline, {
-			goalTitle: title,
-			description,
-			currentLevel: userLevel,
-			userDbContext,
-			libraryContext,
-		});
+		const questsToInsert = await buildQuestDocumentsFromPlan(
+			user._id,
+			goal._id,
+			plan,
+			deadline,
+			{
+				goalTitle: title,
+				description,
+				currentLevel: userLevel,
+				userDbContext,
+				libraryContext,
+			},
+			new Date(),
+			user,
+			req
+		);
 
 		if (questsToInsert.length) {
 			await Quest.insertMany(questsToInsert);
@@ -941,7 +989,9 @@ router.post("/", async (req, res) => {
 			focusHours,
 		});
 
-		const rank = await recalculateAndSaveUserRank(user._id, { preferGemini: true });
+		const rank = await recalculateAndSaveUserRank(user._id, {
+			preferGemini: meetsMinTierWithReq(userForAchievements || user, "elite", req),
+		});
 
 		return res.status(201).json({ goalId: goal._id, rank: rank || user.rank || "E" });
 	} catch (err) {
@@ -1028,18 +1078,22 @@ router.patch("/:id", async (req, res) => {
 
 		let realigned = false;
 		if (textWouldChange && String(goal.category || "").toLowerCase() === "fitness") {
-			try {
-				await realignGoalQuestsFromAi(user, goal, { skipTopicGate: true });
-				realigned = true;
-			} catch (e) {
-				if (e?.code === "goal_topic_mismatch") {
-					return res.status(422).json({
-						error: "goal_topic_mismatch",
-						message: e.payload?.message,
-						suggestions: e.payload?.suggestions ?? [],
-					});
+			if (!meetsMinTierWithReq(user, "starter", req)) {
+				realigned = false;
+			} else {
+				try {
+					await realignGoalQuestsFromAi(user, goal, { skipTopicGate: true, req });
+					realigned = true;
+				} catch (e) {
+					if (e?.code === "goal_topic_mismatch") {
+						return res.status(422).json({
+							error: "goal_topic_mismatch",
+							message: e.payload?.message,
+							suggestions: e.payload?.suggestions ?? [],
+						});
+					}
+					throw e;
 				}
-				throw e;
 			}
 		}
 
@@ -1067,9 +1121,16 @@ router.post("/:id/refresh-quests", async (req, res) => {
 		if (String(goal.category || "").toLowerCase() !== "fitness") {
 			return res.status(400).json({ error: "Quest refresh applies to fitness goals only" });
 		}
+		if (!meetsMinTierWithReq(user, "starter", req)) {
+			return res.status(403).json({
+				error: "tier_required",
+				needsTier: "starter",
+				message: "AI quest regeneration requires Starter or higher.",
+			});
+		}
 
 		try {
-			await realignGoalQuestsFromAi(user, goal);
+			await realignGoalQuestsFromAi(user, goal, { req });
 		} catch (e) {
 			if (e?.code === "goal_topic_mismatch") {
 				return res.status(422).json({

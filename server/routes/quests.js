@@ -8,6 +8,7 @@ import History from "../models/History.js";
 import Goal from "../models/Goal.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
+import { meetsMinTierWithReq } from "../utils/billingTier.js";
 import { scheduleLeaderboardBroadcast } from "../services/leaderboardHub.js";
 import { generateQuestDetails } from "../services/gemini.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
@@ -673,7 +674,9 @@ router.patch("/:id/complete", async (req, res) => {
 		const focusHours = (focusXp?.[0]?.total || 0) / (9 * 60);
 		await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });
 
-		const rank = await recalculateAndSaveUserRank(user._id, { preferGemini: true });
+		const rank = await recalculateAndSaveUserRank(user._id, {
+			preferGemini: meetsMinTierWithReq(user, "elite", req),
+		});
 
 		return res.json({
 			updated: true,

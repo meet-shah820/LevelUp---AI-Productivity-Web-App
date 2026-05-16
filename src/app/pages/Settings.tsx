@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
-import { User, Bell, Lock, LogOut, CreditCard, ExternalLink } from "lucide-react";
+import { User, Bell, Lock, LogOut, CreditCard, ExternalLink, Shield } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -40,6 +40,14 @@ import {
 } from "../utils/api";
 import { toast } from "sonner";
 import { LegalFooterLinks } from "../components/legal/LegalFooterLinks";
+import {
+  clearSiteAdminBypass,
+  readSiteAdminBypassActive,
+  SITE_ADMIN_BYPASS_UPDATED_EVENT,
+  tryUnlockSiteAdminWithPassword,
+} from "../utils/siteAdminBypass";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -63,7 +71,9 @@ export default function Settings() {
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
-  const [active, setActive] = useState<"profile" | "notifications" | "security" | "subscription">("profile");
+  const [active, setActive] = useState<
+    "profile" | "notifications" | "security" | "subscription" | "admin"
+  >("profile");
   const [billingTier, setBillingTier] = useState<string>("free");
   const [billingStatus, setBillingStatus] = useState<string>("");
   const [billingPeriodEnd, setBillingPeriodEnd] = useState<string | null>(null);
@@ -93,8 +103,19 @@ export default function Settings() {
   const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] = useState(false);
   const [deleteAccountBusy, setDeleteAccountBusy] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [siteAdminBypass, setSiteAdminBypass] = useState(() => readSiteAdminBypassActive());
+  const [adminGatePassword, setAdminGatePassword] = useState("");
   // If true, username will be auto-generated from display name until the user edits username directly.
   const [usernameAuto, setUsernameAuto] = useState(false);
+
+  const { effectiveTier } = useEffectiveTier();
+  const canWeeklySummaryEmail = tierMeetsMinimum(effectiveTier, TIER_FOR.weeklySummaryEmailPreference);
+
+  useEffect(() => {
+    const sync = () => setSiteAdminBypass(readSiteAdminBypassActive());
+    window.addEventListener(SITE_ADMIN_BYPASS_UPDATED_EVENT, sync);
+    return () => window.removeEventListener(SITE_ADMIN_BYPASS_UPDATED_EVENT, sync);
+  }, []);
 
   const billingTierNorm = (billingTier || "free").toLowerCase();
   const billingStatusNorm = (billingStatus || "").toLowerCase();
@@ -110,7 +131,13 @@ export default function Settings() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "subscription" || tab === "profile" || tab === "notifications" || tab === "security") {
+    if (
+      tab === "subscription" ||
+      tab === "profile" ||
+      tab === "notifications" ||
+      tab === "security" ||
+      tab === "admin"
+    ) {
       setActive(tab);
     }
   }, [searchParams]);
@@ -377,7 +404,17 @@ export default function Settings() {
                     Icon: CreditCard,
                   },
                   { id: "notifications" as const, label: "Notifications", Icon: Bell },
-                  { id: "security" as const, label: "Security", Icon: Lock },
+                  {
+                    id: "security" as const,
+                    label: "Security",
+                    Icon: Lock,
+                  },
+                  {
+                    id: "admin" as const,
+                    label: "Administrator",
+                    sub: "Preview full site",
+                    Icon: Shield,
+                  },
                 ] as const
               ).map((item) => {
                 const { id, label, Icon } = item;
@@ -583,6 +620,16 @@ export default function Settings() {
               <p className="text-sm text-gray-400 mb-6">
                 Your plan controls feature access (for example Analytics on Pro and above). Payments run through Stripe.
               </p>
+              {siteAdminBypass ? (
+                <div
+                  className="mb-6 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-100"
+                  role="status"
+                >
+                  Administrator preview is on for this browser: tier-gated UI (such as sidebar links) behaves like Elite. Your
+                  Stripe subscription is still{" "}
+                  <span className="font-semibold capitalize">{billingTier}</span>.
+                </div>
+              ) : null}
 
               <div className="space-y-8">
                 {/* Change plan, Stripe portal, cancel / resume — first so it stays above the fold */}
@@ -982,16 +1029,25 @@ export default function Settings() {
 
                 <Separator className="bg-purple-500/20" />
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between opacity-100">
                   <div>
                     <h3 className="text-sm font-medium text-white mb-1">
                       Weekly Summary
                     </h3>
                     <p className="text-xs text-gray-400">
-                      Receive a weekly progress summary
+                      {canWeeklySummaryEmail
+                        ? "Receive a weekly progress summary email (Pro tier)"
+                        : "Weekly digest emails unlock on Pro and Elite."}
                     </p>
                   </div>
-                  <Switch checked={notif.weeklySummary} onCheckedChange={(v) => setNotif({ ...notif, weeklySummary: v })} />
+                  <Switch
+                    checked={canWeeklySummaryEmail ? notif.weeklySummary : false}
+                    disabled={!canWeeklySummaryEmail}
+                    onCheckedChange={(v) => {
+                      if (!canWeeklySummaryEmail) return;
+                      setNotif({ ...notif, weeklySummary: v });
+                    }}
+                  />
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -1048,6 +1104,77 @@ export default function Settings() {
               <LegalFooterLinks align="start" className="text-sm" />
             </Card>
           </motion.div>
+          )}
+
+          {active === "admin" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+            >
+              <Card className="bg-[#111827] border-purple-500/20 p-6">
+                <h2 className="text-xl font-bold text-white mb-2">Administrator preview</h2>
+                <p className="text-sm text-gray-400 mb-6">
+                  For trusted operators. Unlocking applies on this browser only and lifts client-side tier limits so you can navigate
+                  the full app; your Stripe subscription and server-side billing records are unchanged.
+                </p>
+                {siteAdminBypass ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-emerald-200">
+                      Preview is active. Navigation and tier-gated UI behave like Elite.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-purple-500/40 text-white hover:bg-white/10"
+                      onClick={() => {
+                        clearSiteAdminBypass();
+                        setAdminGatePassword("");
+                        toast.message("Administrator preview ended.");
+                      }}
+                    >
+                      End administrator preview
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-w-md">
+                    <div className="space-y-2">
+                      <Label htmlFor="admin-gate-password">Administrator password</Label>
+                      <Input
+                        id="admin-gate-password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={adminGatePassword}
+                        onChange={(e) => setAdminGatePassword(e.target.value)}
+                        className="bg-[#1F2937] border-purple-500/30 text-white"
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          const ok = tryUnlockSiteAdminWithPassword(adminGatePassword.trim());
+                          if (ok) {
+                            toast.success("Administrator preview unlocked.");
+                            setAdminGatePassword("");
+                          } else toast.error("Incorrect password.");
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-80"
+                      onClick={() => {
+                        const ok = tryUnlockSiteAdminWithPassword(adminGatePassword.trim());
+                        if (ok) {
+                          toast.success("Administrator preview unlocked.");
+                          setAdminGatePassword("");
+                        } else toast.error("Incorrect password.");
+                      }}
+                    >
+                      Unlock administrator preview
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            </motion.div>
           )}
 
           {/* Danger Zone */}
@@ -1187,6 +1314,7 @@ export default function Settings() {
                               localStorage.removeItem("auth_token");
                               localStorage.removeItem("last_username");
                               sessionStorage.clear();
+                              clearSiteAdminBypass();
                             } catch {
                               /* ignore */
                             }
@@ -1218,6 +1346,7 @@ export default function Settings() {
               variant="outline"
               className="w-full border-purple-500/30 text-white hover:bg-white/5"
               onClick={() => {
+                clearSiteAdminBypass();
                 localStorage.removeItem("auth_token");
                 window.location.href = "/auth";
               }}

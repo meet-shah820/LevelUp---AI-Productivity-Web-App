@@ -20,7 +20,9 @@ import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
-import { useSearchParams } from "react-router-dom";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { QuestDetailDialog } from "../components/QuestDetailDialog";
 import { formatQuestTitleForDisplay } from "../utils/questDisplay";
 import {
@@ -350,6 +352,7 @@ function mapServerGoals(raw: any[]): Goal[] {
 }
 
 export default function Quests() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const goalIdFilter = searchParams.get("goalId") ?? "";
   const difficultyFilter = searchParams.get("difficulty") ?? "";
@@ -363,6 +366,8 @@ export default function Quests() {
           : "text-amber-400";
   const highlightQuestParam = searchParams.get("highlightQuest");
   const tutorial = useTutorialOptional();
+  const { effectiveTier, billingResolved } = useEffectiveTier();
+  const showProgramModulesTier = billingResolved && tierMeetsMinimum(effectiveTier, TIER_FOR.questsProgramSidebar);
   const showOnboardingQuestTour = Boolean(tutorial?.active && tutorial.step.id === "onboarding_quest");
 
   const setGoalIdFilter = (goalId: string | null) => {
@@ -461,9 +466,12 @@ export default function Quests() {
       };
     };
     try {
+      const showModulesApi = billingResolved && tierMeetsMinimum(effectiveTier, TIER_FOR.questsProgramSidebar);
       const [res, modRes] = await Promise.all([
         getGoals(),
-        getGoalProgramModules().catch(() => ({ modules: [] as GoalProgramModule[] })),
+        showModulesApi
+          ? getGoalProgramModules().catch(() => ({ modules: [] as GoalProgramModule[] }))
+          : Promise.resolve({ modules: [] as GoalProgramModule[] }),
       ]);
       if (!mountedRef.current) return;
       setGoals(mapServerGoals(res.goals || []));
@@ -500,7 +508,7 @@ export default function Quests() {
         easyModeActive: false,
       });
     }
-  }, []);
+  }, [billingResolved, effectiveTier]);
 
   const scheduleQuestDataReload = useCallback(() => {
     if (rankReloadTimerRef.current != null) window.clearTimeout(rankReloadTimerRef.current);
@@ -659,12 +667,24 @@ export default function Quests() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setProgramModulesOpen((o) => !o)}
+              onClick={() => {
+                if (!showProgramModulesTier) {
+                  navigate("/pricing?need=starter");
+                  return;
+                }
+                setProgramModulesOpen((o) => !o);
+              }}
               className="border-purple-500/40 text-purple-100 hover:bg-purple-500/10 gap-2 h-10"
               aria-expanded={programModulesOpen}
+              title={
+                showProgramModulesTier
+                  ? undefined
+                  : "Starter unlocks the expandable program module detail (schedule & movement library)."
+              }
             >
               <BookOpen className="w-4 h-4 shrink-0 text-purple-300" aria-hidden />
               Program modules
+              {!showProgramModulesTier ? <span className="text-[10px] text-amber-300/90">· Starter</span> : null}
               <ChevronDown
                 className={cn("w-4 h-4 text-gray-400 transition-transform", programModulesOpen && "rotate-180")}
                 aria-hidden
@@ -672,7 +692,7 @@ export default function Quests() {
             </Button>
           </div>
         </div>
-        {programModulesOpen ? (
+        {programModulesOpen && showProgramModulesTier ? (
           <ProgramModulesPanel modules={programModules} highlightGoalId={goalIdFilter || undefined} />
         ) : null}
       </motion.div>

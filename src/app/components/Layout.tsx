@@ -30,8 +30,15 @@ import {
 } from "../utils/api";
 import { TutorialProvider } from "../tutorial/TutorialContext";
 import { getBillingStatus, type BillingStatus } from "../utils/api";
+import {
+  readSiteAdminBypassActive,
+  SITE_ADMIN_BYPASS_UPDATED_EVENT,
+  tierForPaidUiGating,
+} from "../utils/siteAdminBypass";
+import type { BillingTierId } from "../utils/tierFeatures";
+import { EffectiveTierProvider } from "../context/EffectiveTierContext";
 
-type Tier = "free" | "starter" | "pro" | "elite";
+type Tier = BillingTierId;
 function tierRank(t: Tier): number {
   if (t === "starter") return 1;
   if (t === "pro") return 2;
@@ -95,7 +102,16 @@ export function Layout() {
   const [dash, setDash] = useState<any>(null);
   const [recent, setRecent] = useState<NotifItem[]>([]);
   const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [billingResolved, setBillingResolved] = useState(false);
+  const [siteAdminBypass, setSiteAdminBypass] = useState(() => readSiteAdminBypassActive());
   const [lastSeenNotifMs, setLastSeenNotifMs] = useState<number>(() => readLastSeenNotifMs());
+
+  useEffect(() => {
+    const onBypass = () => setSiteAdminBypass(readSiteAdminBypassActive());
+    window.addEventListener(SITE_ADMIN_BYPASS_UPDATED_EVENT, onBypass);
+    return () => window.removeEventListener(SITE_ADMIN_BYPASS_UPDATED_EVENT, onBypass);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function loadHeaderData() {
@@ -111,6 +127,7 @@ export function Layout() {
         const b = await getBillingStatus();
         if (!cancelled) setBilling(b);
       } catch {}
+      if (!cancelled) setBillingResolved(true);
     }
     void loadHeaderData();
     const onProfileUpdated = () => {
@@ -133,7 +150,8 @@ export function Layout() {
     };
   }, []);
 
-  const tier: Tier = (billing?.tier as Tier) || "free";
+  const billedTier: Tier = (billing?.tier as Tier) || "free";
+  const tier: Tier = tierForPaidUiGating(billedTier, siteAdminBypass);
   const nav = useMemo(() => {
     const t = tierRank(tier);
     return [
@@ -486,7 +504,13 @@ export function Layout() {
 
         {/* Page Content — tutorial docks in this region (top-right while “New program” is open) */}
         <main className="flex-1 overflow-auto" data-tutorial="page-main">
-          <Outlet />
+          <EffectiveTierProvider
+            billedTier={(billing?.tier as Tier) || "free"}
+            effectiveTier={tier}
+            billingResolved={billingResolved}
+          >
+            <Outlet />
+          </EffectiveTierProvider>
         </main>
       </div>
     </div>

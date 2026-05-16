@@ -1,6 +1,6 @@
 import { useState, useRef, type MouseEvent } from "react";
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, Target, Calendar, Flame, TrendingUp, X, Edit2, Trash2 } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -39,11 +39,15 @@ import {
   createGoal,
   deleteGoal,
   getGoals,
-  getAnalytics,
+  getProfile,
   updateGoal,
   RANK_UPDATED_EVENT,
   GoalTopicMismatchError,
+  TierRequiredError,
 } from "../utils/api";
+import { toast } from "sonner";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 import { ONBOARDING_GOAL_CREATED } from "../tutorial/tutorialEvents";
 import { useEffect } from "react";
 
@@ -105,6 +109,8 @@ function mapServerGoals(raw: any[]): Goal[] {
 const MONGO_OBJECT_ID_RE = /^[a-f\d]{24}$/i;
 
 export default function Goals() {
+  const navigate = useNavigate();
+  const { effectiveTier, billingResolved } = useEffectiveTier();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [overviewStats, setOverviewStats] = useState<{ questsCompleted: number; streak: number }>({
     questsCompleted: 0,
@@ -115,12 +121,12 @@ export default function Goals() {
     let cancelled = false;
     async function load() {
       try {
-        const [gRes, aRes] = await Promise.all([getGoals(), getAnalytics()]);
+        const [gRes, pRes] = await Promise.all([getGoals(), getProfile()]);
         if (cancelled) return;
         setGoals(mapServerGoals(gRes.goals));
         setOverviewStats({
-          questsCompleted: aRes.stats?.questsCompleted ?? 0,
-          streak: aRes.stats?.streak ?? 0,
+          questsCompleted: pRes.quickStats?.questsCompleted ?? 0,
+          streak: pRes.user?.streak ?? 0,
         });
       } catch {
         if (!cancelled) {
@@ -164,6 +170,15 @@ export default function Goals() {
 
   const handleAddGoal = () => {
     setGoalTopicError(null);
+    if (
+      billingResolved &&
+      goals.length >= 1 &&
+      !tierMeetsMinimum(effectiveTier, TIER_FOR.secondActiveGoal)
+    ) {
+      toast.message("Starter and above unlock multiple active training programs.", { duration: 5000 });
+      navigate("/pricing?need=starter");
+      return;
+    }
     setEditingGoal(null);
     setFormData({
       title: "",
@@ -211,6 +226,11 @@ export default function Goals() {
         } catch (e) {
           if (e instanceof GoalTopicMismatchError) {
             setGoalTopicError({ message: e.message, suggestions: e.suggestions });
+            return;
+          }
+          if (e instanceof TierRequiredError) {
+            toast.error(e.message);
+            navigate(`/pricing?need=${encodeURIComponent(e.needsTier || "starter")}`);
             return;
           }
           setGoals(
@@ -267,6 +287,11 @@ export default function Goals() {
       } catch (e) {
         if (e instanceof GoalTopicMismatchError) {
           setGoalTopicError({ message: e.message, suggestions: e.suggestions });
+          return;
+        }
+        if (e instanceof TierRequiredError) {
+          toast.error(e.message);
+          navigate(`/pricing?need=${encodeURIComponent(e.needsTier || "starter")}`);
           return;
         }
         // fallback to local add if backend unavailable
@@ -335,6 +360,11 @@ export default function Goals() {
     return diffDays;
   };
 
+  const multiProgramLocked =
+    billingResolved &&
+    goals.length >= 1 &&
+    !tierMeetsMinimum(effectiveTier, TIER_FOR.secondActiveGoal);
+
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
       {/* Header */}
@@ -351,6 +381,8 @@ export default function Goals() {
         </div>
         <Button
           data-tutorial="add-goal"
+          disabled={multiProgramLocked}
+          title={multiProgramLocked ? "Upgrade to Starter for a second active program" : undefined}
           onClick={handleAddGoal}
           className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
         >
@@ -358,6 +390,23 @@ export default function Goals() {
           Add program
         </Button>
       </motion.div>
+
+      {multiProgramLocked ? (
+        <Card className="bg-amber-500/10 border-amber-500/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-amber-100">
+            Your Free plan keeps one active program. Starter unlocks multiple active programs plus deeper quest tools shown on
+            Quests.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0 border-amber-400/60 text-amber-100 hover:bg-amber-500/15"
+            onClick={() => navigate("/pricing?need=starter")}
+          >
+            View Starter
+          </Button>
+        </Card>
+      ) : null}
 
       {/* Stats Overview */}
       <motion.div

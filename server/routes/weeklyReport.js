@@ -1,6 +1,7 @@
 import express from "express";
 import History from "../models/History.js";
 import { getUserForReq } from "../utils/demoUser.js";
+import { meetsMinTierWithReq } from "../utils/billingTier.js";
 import { getPreviousWeekBounds, ymd } from "../utils/weeklyReportWeek.js";
 import { generateWeeklyReportAi, heuristicProductivityScore } from "../services/weeklyReportAi.js";
 
@@ -44,6 +45,10 @@ router.get("/", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
 		const { reportWeekId, weekStart, weekEnd, weekLabel, days } = getPreviousWeekBounds();
+
+		if (!meetsMinTierWithReq(user, "pro", req)) {
+			return res.json({ showModal: false, reportWeekId, tierBlocked: true });
+		}
 
 		const ack = String(user.weeklyReportAckWeekId || "").trim();
 		if (ack === reportWeekId) {

@@ -1,5 +1,7 @@
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
+import { readSiteAdminBypassActive, SITE_ADMIN_PREVIEW_SECRET } from "./siteAdminBypass";
+
 function apiUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }
@@ -16,6 +18,14 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 	// Attach auth if available (makes data user-specific)
 	const auth = getAuthHeaders();
 	for (const [k, v] of Object.entries(auth)) headers.set(k, v);
+	if (typeof window !== "undefined" && readSiteAdminBypassActive()) {
+		const fromEnv =
+			typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_LEVELUP_ADMIN_PREVIEW_TOKEN
+				? String((import.meta as any).env.VITE_LEVELUP_ADMIN_PREVIEW_TOKEN).trim()
+				: "";
+		const secret = (fromEnv || SITE_ADMIN_PREVIEW_SECRET).trim();
+		if (secret) headers.set("X-LevelUp-Admin-Preview", secret);
+	}
 	return fetch(apiUrl(path), { ...init, headers });
 }
 
@@ -50,6 +60,17 @@ export class GoalTopicMismatchError extends Error {
 	}
 }
 
+export class TierRequiredError extends Error {
+	readonly code = "tier_required" as const;
+	constructor(
+		message: string,
+		public readonly needsTier?: string
+	) {
+		super(message);
+		this.name = "TierRequiredError";
+	}
+}
+
 export async function createGoal(payload: {
 	title: string;
 	category?: string;
@@ -74,6 +95,7 @@ export async function createGoal(payload: {
 		error?: string;
 		message?: string;
 		suggestions?: string[];
+		needsTier?: string;
 	};
 	if (!res.ok) {
 		if (res.status === 422 && body.error === "goal_topic_mismatch") {
@@ -82,6 +104,14 @@ export async function createGoal(payload: {
 					? body.message
 					: "This goal isn’t a fitness or training topic this app supports.",
 				Array.isArray(body.suggestions) ? body.suggestions : []
+			);
+		}
+		if (res.status === 403 && body.error === "tier_required") {
+			throw new TierRequiredError(
+				typeof body.message === "string" && body.message.trim()
+					? body.message.trim()
+					: "Upgrade your plan for this action.",
+				typeof body.needsTier === "string" ? body.needsTier : undefined
 			);
 		}
 		throw new Error(typeof body.error === "string" ? body.error : "Failed to create goal");
@@ -179,6 +209,7 @@ export async function updateGoal(
 		suggestions?: string[];
 		ok?: boolean;
 		realigned?: boolean;
+		needsTier?: string;
 	};
 	if (!res.ok) {
 		if (res.status === 422 && body.error === "goal_topic_mismatch") {
@@ -187,6 +218,14 @@ export async function updateGoal(
 					? body.message
 					: "This goal isn’t a fitness or training topic this app supports.",
 				Array.isArray(body.suggestions) ? body.suggestions : []
+			);
+		}
+		if (res.status === 403 && body.error === "tier_required") {
+			throw new TierRequiredError(
+				typeof body.message === "string" && body.message.trim()
+					? body.message.trim()
+					: "Upgrade your plan for AI program updates.",
+				typeof body.needsTier === "string" ? body.needsTier : undefined
 			);
 		}
 		throw new Error(typeof body.error === "string" ? body.error : "Failed to update goal");

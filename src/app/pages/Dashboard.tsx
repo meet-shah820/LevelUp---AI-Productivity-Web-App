@@ -34,6 +34,8 @@ import {
 import { WeeklyReportModal } from "../components/WeeklyReportModal";
 import { readOnboarding } from "../tutorial/tutorialStorage";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
+import { useEffectiveTier } from "../context/EffectiveTierContext";
+import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 
 /** Focus hours from API are decimal hours; display with lowercase unit `h` (e.g. 3.5h). */
 function formatFocusHours(hours: number): string {
@@ -107,6 +109,7 @@ export default function Dashboard() {
 
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportShown | null>(null);
   const tutorialOpt = useTutorialOptional();
+  const { effectiveTier, billingResolved } = useEffectiveTier();
 
   useEffect(() => {
     let mounted = true;
@@ -117,6 +120,7 @@ export default function Dashboard() {
           Boolean(tutorialOpt?.active) ||
           !!(stored?.started === true && stored.completed !== true && stored.skipped !== true);
         if (tourBlocking) return;
+        if (!billingResolved || !tierMeetsMinimum(effectiveTier, TIER_FOR.weeklyRecapModal)) return;
         const r = await getWeeklyReport();
         if (!mounted) return;
         if (r.showModal) setWeeklyReport(r);
@@ -127,7 +131,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [tutorialOpt?.active]);
+  }, [tutorialOpt?.active, billingResolved, effectiveTier]);
 
   const handleWeeklyReportOpenChange = (open: boolean) => {
     if (open) return;
