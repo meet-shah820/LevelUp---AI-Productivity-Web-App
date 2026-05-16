@@ -17,6 +17,7 @@ import {
   type GoalProgramModule,
 } from "../utils/api";
 import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
+import { useTutorialOptional } from "../tutorial/TutorialContext";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
 import { useSearchParams } from "react-router-dom";
@@ -361,6 +362,8 @@ export default function Quests() {
           ? "text-orange-400"
           : "text-amber-400";
   const highlightQuestParam = searchParams.get("highlightQuest");
+  const tutorial = useTutorialOptional();
+  const showOnboardingQuestTour = Boolean(tutorial?.active && tutorial.step.id === "onboarding_quest");
 
   const setGoalIdFilter = (goalId: string | null) => {
     setSearchParams(
@@ -673,6 +676,34 @@ export default function Quests() {
           <ProgramModulesPanel modules={programModules} highlightGoalId={goalIdFilter || undefined} />
         ) : null}
       </motion.div>
+
+      {showOnboardingQuestTour ? (
+        <motion.div
+          data-tutorial="onboarding-quest"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border-2 border-indigo-500/55 bg-gradient-to-br from-indigo-500/18 to-purple-600/12 p-5 shadow-lg shadow-indigo-500/15"
+        >
+          <div className="flex flex-col sm:flex-row gap-4 sm:items-start">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md">
+                <Target className="w-6 h-6 text-white" aria-hidden />
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Badge className="bg-indigo-500/35 text-indigo-100 border-indigo-400/45 hover:bg-indigo-500/35">
+                  Onboarding quest
+                </Badge>
+                <h2 className="text-lg font-bold text-white leading-snug">Add your first training program</h2>
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  Open <span className="text-white font-medium">Training</span> from the sidebar, create a program, and
+                  come back here — your daily, weekly, and monthly quests will populate once the program exists. You will
+                  earn XP when you finish.
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      ) : null}
 
       {engagement.comebackBoostActive && (
         <motion.div

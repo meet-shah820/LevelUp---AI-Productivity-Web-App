@@ -1,7 +1,24 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import type { TutorialStepDef } from "./tutorialSteps";
+import { TUTORIAL_STEPS } from "./tutorialSteps";
+
+/** Keep a viewport rect (e.g. page main) usable for flex positioning on any screen size. */
+function clampRectToViewport(rect: DOMRect, margin = 12) {
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	const top = Math.max(margin, rect.top);
+	const left = Math.max(margin, rect.left);
+	const right = Math.min(vw - margin, rect.right);
+	const bottom = Math.min(vh - margin, rect.bottom);
+	return {
+		top,
+		left,
+		width: Math.max(0, right - left),
+		height: Math.max(0, bottom - top),
+	};
+}
 
 function renderBodyMarkdownish(text: string) {
 	const parts = text.split(/\*\*(.+?)\*\*/g);
@@ -25,9 +42,63 @@ export type TutorialOverlayProps = {
 	skipTour: () => void;
 };
 
+const PROGRAM_DIALOG_SELECTOR = '[data-tutorial="program-create-dialog"]';
+const PAGE_MAIN_SELECTOR = '[data-tutorial="page-main"]';
+
 export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext, skipTour }: TutorialOverlayProps) {
 	const location = useLocation();
 	const navigate = useNavigate();
+	/** Page main rect while program dialog is open (dock hint to Training area, not on the modal). */
+	const [dockPageMainRect, setDockPageMainRect] = useState<DOMRect | null>(null);
+	const [wideForDock, setWideForDock] = useState(
+		() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+	);
+
+	const dockHintOnProgramDialog = Boolean(
+		active && step.kind === "goal_created" && dockPageMainRect && dockPageMainRect.width > 2 && dockPageMainRect.height > 2
+	);
+
+	useLayoutEffect(() => {
+		const mq = window.matchMedia("(min-width: 768px)");
+		const apply = () => setWideForDock(mq.matches);
+		apply();
+		mq.addEventListener("change", apply);
+		return () => mq.removeEventListener("change", apply);
+	}, []);
+
+	const dockWideLayoutStyle = useMemo(() => {
+		if (!dockPageMainRect) return undefined;
+		return clampRectToViewport(dockPageMainRect);
+	}, [dockPageMainRect]);
+
+	useLayoutEffect(() => {
+		if (!active || step.kind !== "goal_created") {
+			setDockPageMainRect(null);
+			return;
+		}
+		const read = () => {
+			const dlg = document.querySelector(PROGRAM_DIALOG_SELECTOR);
+			const mainEl = document.querySelector(PAGE_MAIN_SELECTOR);
+			const dialogOpen =
+				dlg instanceof HTMLElement && dlg.getBoundingClientRect().width > 2 && dlg.getBoundingClientRect().height > 2;
+			if (!dialogOpen || !(mainEl instanceof HTMLElement)) {
+				setDockPageMainRect(null);
+				return;
+			}
+			const r = mainEl.getBoundingClientRect();
+			if (r.width < 2 || r.height < 2) setDockPageMainRect(null);
+			else setDockPageMainRect(r);
+		};
+		read();
+		const id = window.setInterval(read, 200);
+		window.addEventListener("resize", read);
+		window.addEventListener("scroll", read, true);
+		return () => {
+			window.clearInterval(id);
+			window.removeEventListener("resize", read);
+			window.removeEventListener("scroll", read, true);
+		};
+	}, [active, step.kind]);
 
 	const wrongPage = step.path && location.pathname !== step.path;
 
@@ -39,11 +110,19 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 		return `You are on a different page. Open **${step.path}** from the sidebar, or use the button below.`;
 	}, [wrongPage, step.path]);
 
+	const showSpotlight = active && spotlightRect && !dockHintOnProgramDialog;
+	const showFullDim = active && !showSpotlight && !dockHintOnProgramDialog;
+
+	const dockUseWideCorner = dockHintOnProgramDialog && wideForDock && dockWideLayoutStyle && dockWideLayoutStyle.width > 120;
+
+	const panelClassName =
+		"pointer-events-auto w-full min-w-0 rounded-2xl border border-purple-500/35 bg-[#0f1424]/95 backdrop-blur-md shadow-2xl shadow-black/50 p-4 sm:p-6 space-y-3 sm:space-y-4 max-h-[min(70dvh,32rem)] overflow-y-auto overflow-x-hidden max-w-[min(32rem,calc(100vw-1.25rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]";
+
 	return (
 		<>
-			{spotlightRect && active ? (
+			{showSpotlight ? (
 				<div
-					className="pointer-events-none fixed z-[190] rounded-xl border-2 border-indigo-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-[top,left,width,height] duration-200 ease-out"
+					className="pointer-events-none fixed z-[55] rounded-xl border-2 border-indigo-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-[top,left,width,height] duration-200 ease-out"
 					style={{
 						top: spotlightRect.top - 6,
 						left: spotlightRect.left - 6,
@@ -52,16 +131,27 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 					}}
 					aria-hidden
 				/>
-			) : active ? (
-				<div className="pointer-events-none fixed inset-0 z-[185] bg-black/50" aria-hidden />
+			) : showFullDim ? (
+				<div className="pointer-events-none fixed inset-0 z-[40] bg-black/50" aria-hidden />
 			) : null}
 
-			<div className="fixed bottom-0 left-0 right-0 z-[200] p-4 sm:p-6 pointer-events-none flex justify-center">
-				<div className="pointer-events-auto w-full max-w-lg rounded-2xl border border-purple-500/35 bg-[#0f1424]/95 backdrop-blur-md shadow-2xl shadow-black/50 p-5 sm:p-6 space-y-4">
+			<div
+				className={
+					dockUseWideCorner
+						? // md+: keep card inside visible page-main, top-end; rect is clamped to the viewport.
+							"fixed z-[60] pointer-events-none flex items-start justify-end p-2 sm:p-3 md:p-4"
+						: dockHintOnProgramDialog
+							? // Dialog open on narrow screens: bottom sheet so the panel stays reachable.
+								"fixed inset-x-0 bottom-0 z-[60] pointer-events-none flex justify-center pt-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-4"
+							: "fixed bottom-0 left-0 right-0 z-[60] px-3 sm:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-2 sm:pt-3 pointer-events-none flex justify-center"
+				}
+				style={dockUseWideCorner && dockWideLayoutStyle ? dockWideLayoutStyle : undefined}
+			>
+				<div className={dockUseWideCorner ? `${panelClassName} shrink-0` : panelClassName}>
 					<div className="flex items-start justify-between gap-3">
 						<div>
 							<p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/90 mb-1">
-								Step {stepIndex + 1} / 10
+								Step {stepIndex + 1} / {TUTORIAL_STEPS.length}
 							</p>
 							<h2 className="text-lg sm:text-xl font-bold text-white leading-snug">{step.title}</h2>
 						</div>

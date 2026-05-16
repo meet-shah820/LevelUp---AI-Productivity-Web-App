@@ -115,8 +115,8 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 
 				if (nextStored.started && !nextStored.completed && !nextStored.skipped) {
 					let idx = nextStored.stepIndex;
-					if (idx <= 1 && goalCount >= 1) idx = Math.max(idx, 2);
-					if (idx <= 3 && qc >= 1) idx = Math.max(idx, 4);
+					if (idx <= 2 && goalCount >= 1) idx = Math.max(idx, 4);
+					if (idx <= 5 && qc >= 1) idx = Math.max(idx, 6);
 					idx = Math.min(idx, TUTORIAL_STEPS.length - 1);
 					if (idx !== nextStored.stepIndex) {
 						nextStored = { ...nextStored, stepIndex: idx };
@@ -150,7 +150,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 				const a = await getAnalytics();
 				if (cancelled) return;
 				const qc = Number(a?.stats?.questsCompleted ?? 0);
-				if (qc >= 1 && stepIndex === 3) advanceToIndex(4);
+				if (qc >= 1 && stepIndex === 5) advanceToIndex(6);
 			} catch {
 				/* ignore */
 			}
@@ -164,12 +164,12 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 		const onGoal = () => {
 			if (!active) return;
 			if (TUTORIAL_STEPS[stepIndex]?.id !== "goals_create") return;
-			advanceToIndex(2);
+			advanceToIndex(3);
 		};
 		const onQuest = () => {
 			if (!active) return;
 			if (TUTORIAL_STEPS[stepIndex]?.id !== "quests_complete") return;
-			advanceToIndex(4);
+			advanceToIndex(6);
 		};
 		window.addEventListener(ONBOARDING_GOAL_CREATED, onGoal);
 		window.addEventListener(ONBOARDING_QUEST_COMPLETED, onQuest);

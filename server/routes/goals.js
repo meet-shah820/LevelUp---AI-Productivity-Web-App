@@ -88,6 +88,9 @@ function buildAiDescriptionWithProfile(description, userProfile) {
 const QUEST_TOTAL_MIN = 10;
 const QUEST_TOTAL_MAX = 30;
 
+/** XP for the onboarding quest: creating the first active training program (quest-like reward). */
+const ONBOARDING_FIRST_PROGRAM_XP = 100;
+
 /** Total quest rows to create for one goal: 10–30, longer deadline horizon → closer to 30. */
 function targetCombinedQuestCount(months) {
 	const m = Number(months);
@@ -830,6 +833,7 @@ router.post("/", async (req, res) => {
 				: "common";
 
 		const user = await getUserForReq(req);
+		const priorActiveGoalCount = await Goal.countDocuments({ userId: user._id, status: "active" });
 		const goalCategory = "Fitness";
 		const deadline = parseOptionalDate(rawDeadline);
 		const description = String(rawDescription || "").trim().slice(0, 2000);
@@ -909,12 +913,33 @@ router.post("/", async (req, res) => {
 			console.warn("[goals] program modules enrichment on create:", enr?.message || enr);
 		}
 
+		if (priorActiveGoalCount === 0) {
+			const userDoc = await User.findById(user._id);
+			if (userDoc) {
+				userDoc.xp = (userDoc.xp || 0) + ONBOARDING_FIRST_PROGRAM_XP;
+				userDoc.level = calculateLevelFromXp(userDoc.xp);
+				await userDoc.save();
+				await History.create({
+					userId: user._id,
+					type: "first_goal_bonus",
+					xpChange: ONBOARDING_FIRST_PROGRAM_XP,
+					meta: { title: "Onboarding quest: first training program" },
+				});
+			}
+		}
+
 		const goalsActive = await Goal.find({ userId: user._id, status: "active" }).lean();
+		const userForAchievements = await User.findById(user._id);
 		const hist = await History.find({ userId: user._id }).lean();
 		const questsCompleted = hist.filter((h) => h.type === "quest_complete" && h.xpChange > 0).length;
 		const focusXp = hist.filter((h) => h.type === "focus_session").reduce((s, h) => s + (h.xpChange || 0), 0);
 		const focusHours = focusXp / (9 * 60);
-		await evaluateAndRecordAchievements({ user, goals: goalsActive, questsCompleted, focusHours });
+		await evaluateAndRecordAchievements({
+			user: userForAchievements || user,
+			goals: goalsActive,
+			questsCompleted,
+			focusHours,
+		});
 
 		const rank = await recalculateAndSaveUserRank(user._id, { preferGemini: true });
 

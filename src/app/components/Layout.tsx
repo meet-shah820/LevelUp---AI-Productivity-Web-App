@@ -369,23 +369,46 @@ export function Layout() {
           </div>
 
           <div className="flex items-center gap-4 relative z-10">
-            {/* XP Bar */}
-            <div className="hidden md:flex flex-col items-end min-w-[200px]">
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-xs text-gray-400">Level {user.level}</span>
-                <span className="text-xs text-indigo-400 font-medium">
-                  {user.currentXP.toLocaleString()} / {user.maxXP.toLocaleString()} XP
-                </span>
+            {/* XP Bar — data-tutorial wraps desktop + compact mobile so spotlight works on all widths */}
+            <div
+              data-tutorial="xp-bar"
+              className="flex flex-col items-end min-w-[128px] md:min-w-[200px]"
+            >
+              <div className="hidden md:flex flex-col items-end w-full">
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-xs text-gray-400">Level {user.level}</span>
+                  <span className="text-xs text-indigo-400 font-medium">
+                    {user.currentXP.toLocaleString()} / {user.maxXP.toLocaleString()} XP
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden backdrop-blur-sm border border-purple-500/20">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${xpPercentage}%` }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full relative"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent animate-pulse" />
+                  </motion.div>
+                </div>
               </div>
-              <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden backdrop-blur-sm border border-purple-500/20">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${xpPercentage}%` }}
-                  transition={{ duration: 1, ease: "easeOut" }}
-                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full relative"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent animate-pulse" />
-                </motion.div>
+              <div className="flex md:hidden flex-col items-end w-full gap-0.5">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[10px] text-gray-400">Lv {user.level}</span>
+                  <span className="text-[10px] text-indigo-400 font-medium">
+                    {user.currentXP.toLocaleString()}/{user.maxXP.toLocaleString()}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-purple-500/20">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${xpPercentage}%` }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full relative"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent animate-pulse" />
+                  </motion.div>
+                </div>
               </div>
             </div>
 
@@ -461,8 +484,8 @@ export function Layout() {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-auto">
+        {/* Page Content — tutorial docks in this region (top-right while “New program” is open) */}
+        <main className="flex-1 overflow-auto" data-tutorial="page-main">
           <Outlet />
         </main>
       </div>

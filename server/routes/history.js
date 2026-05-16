@@ -22,6 +22,16 @@ function mapHistoryDoc(doc) {
 				questId: doc.questId ? String(doc.questId) : undefined,
 			};
 		}
+		case "first_goal_bonus": {
+			if ((doc.xpChange || 0) <= 0) return null;
+			return {
+				id: String(doc._id),
+				type: "quest",
+				message: meta.title || "Onboarding quest: first training program",
+				xp: doc.xpChange,
+				at: new Date(at).toISOString(),
+			};
+		}
 		case "penalty_missed_day": {
 			const from = meta?.from ? new Date(meta.from).toISOString().slice(0, 10) : null;
 			return {

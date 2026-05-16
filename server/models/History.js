@@ -7,6 +7,7 @@ const HistorySchema = new mongoose.Schema(
 			type: String,
 			enum: [
 				"quest_complete",
+				"first_goal_bonus",
 				"focus_session",
 				"level_up",
 				"achievement_unlocked",

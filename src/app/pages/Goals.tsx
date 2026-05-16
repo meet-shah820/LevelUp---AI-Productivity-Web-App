@@ -594,7 +594,10 @@ export default function Goals() {
           if (!open) setGoalTopicError(null);
         }}
       >
-        <DialogContent className="bg-[#111827] border-purple-500/30 text-white max-w-md">
+        <DialogContent
+          className="bg-[#111827] border-purple-500/30 text-white max-w-md"
+          data-tutorial="program-create-dialog"
+        >
           <DialogHeader>
             <DialogTitle>{editingGoal ? "Edit program" : "New program"}</DialogTitle>
             <DialogDescription className="text-gray-400">

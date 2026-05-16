@@ -17,7 +17,7 @@ async function sumTodayXpBuckets(userId, start, end) {
 	const rows = await History.find({
 		userId,
 		occurredAt: { $gte: start, $lte: end },
-		type: { $in: ["quest_complete", "focus_session", "timeframe_bonus"] },
+		type: { $in: ["quest_complete", "first_goal_bonus", "focus_session", "timeframe_bonus"] },
 	})
 		.select("xpChange type")
 		.lean();

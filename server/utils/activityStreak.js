@@ -20,7 +20,7 @@ export async function computeActivityStreakDays(userId) {
 
 	const rows = await History.find({
 		userId,
-		type: { $in: ["quest_complete", "focus_session"] },
+		type: { $in: ["quest_complete", "first_goal_bonus", "focus_session"] },
 		occurredAt: { $gte: floor },
 		xpChange: { $gt: 0 },
 	})
