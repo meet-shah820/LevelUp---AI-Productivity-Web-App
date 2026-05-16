@@ -32,6 +32,8 @@ import {
   type WeeklyReportShown,
 } from "../utils/api";
 import { WeeklyReportModal } from "../components/WeeklyReportModal";
+import { readOnboarding } from "../tutorial/tutorialStorage";
+import { useTutorialOptional } from "../tutorial/TutorialContext";
 
 /** Focus hours from API are decimal hours; display with lowercase unit `h` (e.g. 3.5h). */
 function formatFocusHours(hours: number): string {
@@ -104,11 +106,17 @@ export default function Dashboard() {
   const [leveledUp, setLeveledUp] = useState(false);
 
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportShown | null>(null);
+  const tutorialOpt = useTutorialOptional();
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
+        const stored = readOnboarding();
+        const tourBlocking =
+          Boolean(tutorialOpt?.active) ||
+          !!(stored?.started === true && stored.completed !== true && stored.skipped !== true);
+        if (tourBlocking) return;
         const r = await getWeeklyReport();
         if (!mounted) return;
         if (r.showModal) setWeeklyReport(r);
@@ -119,7 +127,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [tutorialOpt?.active]);
 
   const handleWeeklyReportOpenChange = (open: boolean) => {
     if (open) return;

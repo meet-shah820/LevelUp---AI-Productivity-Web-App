@@ -15,7 +15,10 @@ export function WeeklyReportModal({ report, open, onOpenChange }: Props) {
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-2xl max-h-[min(90vh,720px)] overflow-y-auto border-purple-500/30 bg-[#0c101c] text-white shadow-2xl shadow-purple-900/40 gap-0 p-0">
+			<DialogContent
+				className="sm:max-w-2xl max-h-[min(90vh,720px)] overflow-y-auto border-purple-500/30 bg-[#0c101c] text-white shadow-2xl shadow-purple-900/40 gap-0 p-0"
+				onCloseAutoFocus={(e) => e.preventDefault()}
+			>
 				<div className="p-6 sm:p-8 space-y-6">
 					<DialogHeader className="space-y-2 text-left">
 						<div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold uppercase tracking-wider">
