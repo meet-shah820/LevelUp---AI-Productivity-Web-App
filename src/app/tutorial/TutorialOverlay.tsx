@@ -1,24 +1,10 @@
 import { useLayoutEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import type { TutorialStepDef } from "./tutorialSteps";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
 
-/** Keep a viewport rect (e.g. page main) usable for flex positioning on any screen size. */
-function clampRectToViewport(rect: DOMRect, margin = 12) {
-	const vw = window.innerWidth;
-	const vh = window.innerHeight;
-	const top = Math.max(margin, rect.top);
-	const left = Math.max(margin, rect.left);
-	const right = Math.min(vw - margin, rect.right);
-	const bottom = Math.min(vh - margin, rect.bottom);
-	return {
-		top,
-		left,
-		width: Math.max(0, right - left),
-		height: Math.max(0, bottom - top),
-	};
-}
 
 function renderBodyMarkdownish(text: string) {
 	const parts = text.split(/\*\*(.+?)\*\*/g);
@@ -44,50 +30,128 @@ export type TutorialOverlayProps = {
 
 const PROGRAM_DIALOG_SELECTOR = '[data-tutorial="program-create-dialog"]';
 const PAGE_MAIN_SELECTOR = '[data-tutorial="page-main"]';
+const EDGE = 12;
+const GAP = 12;
+/** Keep text column readable beside the dialog without covering it. */
+function minTutorialStripPx(vw: number) {
+	return Math.min(336, Math.max(240, Math.round(vw * 0.22)));
+}
+const MIN_BAND_HEIGHT = 112;
+const MIN_BELOW_ZONE = 148;
+
+type ProgramDialogDock = { kind: "none" } | { kind: "sheet" } | { kind: "slot"; wrapperStyle: CSSProperties; justify: "justify-end" | "justify-start" | "justify-center" };
+
+function computeProgramDialogDock(main: DOMRect, dlg: DOMRect): ProgramDialogDock {
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+
+	if (vw < 768) return { kind: "sheet" };
+
+	const mainInsetL = Math.max(EDGE, main.left + EDGE);
+	const mainInsetR = Math.min(vw - EDGE, main.right - EDGE);
+	const topBand = Math.max(EDGE, main.top + EDGE * 0.5);
+	const bottomBand = Math.min(vh - EDGE, main.bottom - EDGE);
+
+	if (mainInsetR - mainInsetL < 96 || bottomBand - topBand < MIN_BAND_HEIGHT) {
+		return { kind: "sheet" };
+	}
+
+	const minStrip = minTutorialStripPx(vw);
+
+	const leftAvail = dlg.left - GAP - mainInsetL;
+	const rightAvail = mainInsetR - (dlg.right + GAP);
+	const belowAvail = bottomBand - (dlg.bottom + GAP);
+
+	let side: "left" | "right" | null = null;
+	if (leftAvail >= minStrip && rightAvail >= minStrip) side = "left";
+	else if (leftAvail >= minStrip) side = "left";
+	else if (rightAvail >= minStrip) side = "right";
+	if (side === "left") {
+		return {
+			kind: "slot",
+			justify: "justify-end",
+			wrapperStyle: {
+				position: "fixed",
+				zIndex: 60,
+				pointerEvents: "none",
+				top: topBand,
+				bottom: vh - bottomBand,
+				left: mainInsetL,
+				width: Math.max(160, dlg.left - GAP - mainInsetL),
+				display: "flex",
+				flexDirection: "row",
+				alignItems: "flex-start",
+			},
+		};
+	}
+	if (side === "right") {
+		return {
+			kind: "slot",
+			justify: "justify-start",
+			wrapperStyle: {
+				position: "fixed",
+				zIndex: 60,
+				pointerEvents: "none",
+				top: topBand,
+				bottom: vh - bottomBand,
+				left: dlg.right + GAP,
+				width: Math.max(160, mainInsetR - (dlg.right + GAP)),
+				display: "flex",
+				flexDirection: "row",
+				alignItems: "flex-start",
+			},
+		};
+	}
+
+	if (belowAvail >= MIN_BELOW_ZONE) {
+		return {
+			kind: "slot",
+			justify: "justify-center",
+			wrapperStyle: {
+				position: "fixed",
+				zIndex: 60,
+				pointerEvents: "none",
+				top: dlg.bottom + GAP,
+				bottom: vh - bottomBand,
+				left: mainInsetL,
+				width: mainInsetR - mainInsetL,
+				display: "flex",
+				flexDirection: "row",
+				alignItems: "flex-start",
+			},
+		};
+	}
+
+	return { kind: "sheet" };
+}
 
 export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext, skipTour }: TutorialOverlayProps) {
 	const location = useLocation();
 	const navigate = useNavigate();
-	/** Page main rect while program dialog is open (dock hint to Training area, not on the modal). */
-	const [dockPageMainRect, setDockPageMainRect] = useState<DOMRect | null>(null);
-	const [wideForDock, setWideForDock] = useState(
-		() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
-	);
 
-	const dockHintOnProgramDialog = Boolean(
-		active && step.kind === "goal_created" && dockPageMainRect && dockPageMainRect.width > 2 && dockPageMainRect.height > 2
-	);
-
-	useLayoutEffect(() => {
-		const mq = window.matchMedia("(min-width: 768px)");
-		const apply = () => setWideForDock(mq.matches);
-		apply();
-		mq.addEventListener("change", apply);
-		return () => mq.removeEventListener("change", apply);
-	}, []);
-
-	const dockWideLayoutStyle = useMemo(() => {
-		if (!dockPageMainRect) return undefined;
-		return clampRectToViewport(dockPageMainRect);
-	}, [dockPageMainRect]);
+	const [programDock, setProgramDock] = useState<ProgramDialogDock>({ kind: "none" });
 
 	useLayoutEffect(() => {
 		if (!active || step.kind !== "goal_created") {
-			setDockPageMainRect(null);
+			setProgramDock({ kind: "none" });
 			return;
 		}
 		const read = () => {
-			const dlg = document.querySelector(PROGRAM_DIALOG_SELECTOR);
+			const dlgEl = document.querySelector(PROGRAM_DIALOG_SELECTOR);
 			const mainEl = document.querySelector(PAGE_MAIN_SELECTOR);
-			const dialogOpen =
-				dlg instanceof HTMLElement && dlg.getBoundingClientRect().width > 2 && dlg.getBoundingClientRect().height > 2;
-			if (!dialogOpen || !(mainEl instanceof HTMLElement)) {
-				setDockPageMainRect(null);
+			if (!(dlgEl instanceof HTMLElement && mainEl instanceof HTMLElement)) {
+				setProgramDock({ kind: "none" });
 				return;
 			}
-			const r = mainEl.getBoundingClientRect();
-			if (r.width < 2 || r.height < 2) setDockPageMainRect(null);
-			else setDockPageMainRect(r);
+			const dlgR = dlgEl.getBoundingClientRect();
+			const mainR = mainEl.getBoundingClientRect();
+			const dialogVisible = dlgR.width > 8 && dlgR.height > 8;
+			const mainOk = mainR.width > 2 && mainR.height > 2;
+			if (!dialogVisible || !mainOk) {
+				setProgramDock({ kind: "none" });
+				return;
+			}
+			setProgramDock(computeProgramDialogDock(mainR, dlgR));
 		};
 		read();
 		const id = window.setInterval(read, 200);
@@ -99,6 +163,10 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 			window.removeEventListener("scroll", read, true);
 		};
 	}, [active, step.kind]);
+
+	const dockHintOnProgramDialog = Boolean(
+		active && step.kind === "goal_created" && programDock.kind !== "none"
+	);
 
 	const wrongPage = step.path && location.pathname !== step.path;
 
@@ -113,14 +181,31 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 	const showSpotlight = active && spotlightRect && !dockHintOnProgramDialog;
 	const showFullDim = active && !showSpotlight && !dockHintOnProgramDialog;
 
-	const dockUseWideCorner = dockHintOnProgramDialog && wideForDock && dockWideLayoutStyle && dockWideLayoutStyle.width > 120;
-
 	const panelClassName =
 		"pointer-events-auto w-full min-w-0 rounded-2xl border border-purple-500/35 bg-[#0f1424]/95 backdrop-blur-md shadow-2xl shadow-black/50 p-4 sm:p-6 space-y-3 sm:space-y-4 max-h-[min(70dvh,32rem)] overflow-y-auto overflow-x-hidden max-w-[min(32rem,calc(100vw-1.25rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]";
 
+	const defaultFooterWrapClass =
+		"fixed bottom-0 left-0 right-0 z-[60] px-3 sm:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-2 sm:pt-3 pointer-events-none flex justify-center min-h-0";
+	const sheetWrapClass =
+		"fixed inset-x-0 bottom-0 z-[60] pointer-events-none flex justify-center pt-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-4 min-h-0 overflow-x-hidden";
+
+	let wrapOuterClass = defaultFooterWrapClass;
+	let wrapOuterStyle: CSSProperties | undefined;
+	if (dockHintOnProgramDialog) {
+		if (programDock.kind === "sheet") {
+			wrapOuterClass = sheetWrapClass;
+		} else if (programDock.kind === "slot") {
+			wrapOuterClass = `pointer-events-none flex min-h-0 overflow-x-hidden ${programDock.justify}`;
+			wrapOuterStyle = programDock.wrapperStyle;
+		}
+	}
+
+	const wrapPanelClass =
+		dockHintOnProgramDialog && programDock.kind === "slot" ? `${panelClassName} shrink-0 max-w-full max-h-full` : panelClassName;
+
 	return (
 		<>
-			{showSpotlight ? (
+			{showSpotlight && spotlightRect ? (
 				<div
 					className="pointer-events-none fixed z-[55] rounded-xl border-2 border-indigo-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-[top,left,width,height] duration-200 ease-out"
 					style={{
@@ -135,19 +220,8 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 				<div className="pointer-events-none fixed inset-0 z-[40] bg-black/50" aria-hidden />
 			) : null}
 
-			<div
-				className={
-					dockUseWideCorner
-						? // md+: keep card inside visible page-main, top-end; rect is clamped to the viewport.
-							"fixed z-[60] pointer-events-none flex items-start justify-end p-2 sm:p-3 md:p-4"
-						: dockHintOnProgramDialog
-							? // Dialog open on narrow screens: bottom sheet so the panel stays reachable.
-								"fixed inset-x-0 bottom-0 z-[60] pointer-events-none flex justify-center pt-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-4"
-							: "fixed bottom-0 left-0 right-0 z-[60] px-3 sm:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-2 sm:pt-3 pointer-events-none flex justify-center"
-				}
-				style={dockUseWideCorner && dockWideLayoutStyle ? dockWideLayoutStyle : undefined}
-			>
-				<div className={dockUseWideCorner ? `${panelClassName} shrink-0` : panelClassName}>
+			<div className={wrapOuterClass} style={wrapOuterStyle}>
+				<div className={wrapPanelClass}>
 					<div className="flex items-start justify-between gap-3">
 						<div>
 							<p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/90 mb-1">
