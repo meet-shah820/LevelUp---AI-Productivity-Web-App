@@ -366,7 +366,7 @@ export default function Goals() {
     !tierMeetsMinimum(effectiveTier, TIER_FOR.secondActiveGoal);
 
   return (
-    <div className="min-h-full p-4 lg:p-8 space-y-6">
+    <div className="min-h-full p-4 lg:p-8 space-y-6" data-tutorial="training-page">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

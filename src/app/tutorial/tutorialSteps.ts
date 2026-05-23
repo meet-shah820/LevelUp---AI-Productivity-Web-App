@@ -1,5 +1,7 @@
 export type TutorialStepKind = "next" | "goal_created" | "quest_completed";
 
+export type TutorialMode = "onboarding" | "replay";
+
 export type TutorialStepDef = {
 	id: string;
 	path: string;
@@ -12,7 +14,7 @@ export type TutorialStepDef = {
 	nextLabel?: string;
 };
 
-export const TUTORIAL_STEPS: TutorialStepDef[] = [
+const TUTORIAL_HEAD: TutorialStepDef[] = [
 	{
 		id: "welcome",
 		path: "/",
@@ -30,14 +32,29 @@ export const TUTORIAL_STEPS: TutorialStepDef[] = [
 		nextLabel: "Continue",
 		spotlightSelector: '[data-tutorial="onboarding-quest"]',
 	},
-	{
-		id: "goals_create",
-		path: "/goals",
-		kind: "goal_created",
-		title: "Complete the quest",
-		body: "Tap **Add program** (or **Add your first program**), fill the form, and submit. You earn **XP** for your first program, same idea as quest rewards. This step advances automatically when the program is created.",
-		spotlightSelector: '[data-tutorial="add-goal"]',
-	},
+];
+
+export const GOALS_CREATE_STEP: TutorialStepDef = {
+	id: "goals_create",
+	path: "/goals",
+	kind: "goal_created",
+	title: "Complete the quest",
+	body: "Tap **Add program** (or **Add your first program**), fill the form, and submit. You earn **XP** for your first program, same idea as quest rewards. This step advances automatically when the program is created.",
+	spotlightSelector: '[data-tutorial="add-goal"]',
+};
+
+/** Shown when replaying the tour — introduces Training without creating a program. */
+export const TRAINING_INTRO_STEP: TutorialStepDef = {
+	id: "training_intro",
+	path: "/goals",
+	kind: "next",
+	title: "Training programs",
+	body: "The **Training** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Use **Add program** when you want to build or extend a plan — this tour only introduces the page. Tap **Next** to continue.",
+	nextLabel: "Next",
+	spotlightSelector: '[data-tutorial="training-page"]',
+};
+
+const TUTORIAL_TAIL: TutorialStepDef[] = [
 	{
 		id: "xp_bar_intro",
 		path: "/quests",
@@ -55,14 +72,38 @@ export const TUTORIAL_STEPS: TutorialStepDef[] = [
 		body: "Quests are daily, weekly, and monthly missions tied to your programs. Use filters and tabs to focus. When you are ready, tap **Next** — then you will complete one real quest to continue the tour.",
 		nextLabel: "Next",
 	},
-	{
-		id: "quests_complete",
-		path: "/quests",
-		kind: "quest_completed",
-		title: "Complete one quest",
-		body: "Pick any unfinished quest and press **Complete** so we can log real XP. This step advances automatically when the server accepts your first completion during the tour (if you already finished quests before, we will move you forward when you open this page).",
-		spotlightSelector: '[data-tutorial="quest-board"]',
-	},
+];
+
+export const QUESTS_COMPLETE_STEP: TutorialStepDef = {
+	id: "quests_complete",
+	path: "/quests",
+	kind: "quest_completed",
+	title: "Complete one quest",
+	body: "Pick any unfinished quest and press **Complete** so we can log real XP. This step advances automatically when the server accepts your first completion during the tour (if you already finished quests before, we will move you forward when you open this page).",
+	spotlightSelector: '[data-tutorial="quest-board"]',
+};
+
+/** Shown when replaying the tour — introduces quest completion without requiring an action. */
+export const QUESTS_COMPLETE_INTRO_STEP: TutorialStepDef = {
+	id: "quests_complete_intro",
+	path: "/quests",
+	kind: "next",
+	title: "Completing quests",
+	body: "Each quest card has a **Complete** button when you finish the work. Completing quests logs XP and can unlock achievements. This tour only shows the board — tap **Next** when you are ready to continue.",
+	nextLabel: "Next",
+	spotlightSelector: '[data-tutorial="quest-board"]',
+};
+
+const QUESTS_INTRO_REPLAY: TutorialStepDef = {
+	id: "quests_intro",
+	path: "/quests",
+	kind: "next",
+	title: "Your quests board",
+	body: "Quests are daily, weekly, and monthly missions tied to your programs. Use filters and tabs to focus. Tap **Next** to see how quest completion works on this board.",
+	nextLabel: "Next",
+};
+
+const TUTORIAL_TAIL_AFTER_QUESTS: TutorialStepDef[] = [
 	{
 		id: "achievements",
 		path: "/achievements",
@@ -112,3 +153,27 @@ export const TUTORIAL_STEPS: TutorialStepDef[] = [
 		nextLabel: "Finish",
 	},
 ];
+
+const TUTORIAL_MIDDLE: TutorialStepDef[] = [
+	...TUTORIAL_TAIL.slice(0, 2),
+	QUESTS_COMPLETE_STEP,
+];
+
+export const TUTORIAL_STEPS: TutorialStepDef[] = [
+	...TUTORIAL_HEAD,
+	GOALS_CREATE_STEP,
+	...TUTORIAL_MIDDLE,
+	...TUTORIAL_TAIL_AFTER_QUESTS,
+];
+
+function applyReplaySubstitutions(step: TutorialStepDef): TutorialStepDef {
+	if (step.id === "goals_create") return TRAINING_INTRO_STEP;
+	if (step.id === "quests_intro") return QUESTS_INTRO_REPLAY;
+	if (step.id === "quests_complete") return QUESTS_COMPLETE_INTRO_STEP;
+	return step;
+}
+
+export function getTutorialSteps(mode: TutorialMode): TutorialStepDef[] {
+	if (mode === "onboarding") return TUTORIAL_STEPS;
+	return TUTORIAL_STEPS.map(applyReplaySubstitutions);
+}

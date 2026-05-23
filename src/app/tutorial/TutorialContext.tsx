@@ -13,17 +13,21 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { getGoals, getProfile } from "../utils/api";
 import { ONBOARDING_GOAL_CREATED, ONBOARDING_QUEST_COMPLETED } from "./tutorialEvents";
 import { readOnboarding, writeOnboarding, type OnboardingPersisted } from "./tutorialStorage";
-import { TUTORIAL_STEPS, type TutorialStepDef } from "./tutorialSteps";
+import { getTutorialSteps, TUTORIAL_STEPS, type TutorialMode, type TutorialStepDef } from "./tutorialSteps";
 import { TutorialOverlay } from "./TutorialOverlay";
 
 type TutorialContextValue = {
 	/** Tour is visible (modal + optional spotlight). */
 	active: boolean;
+	mode: TutorialMode;
 	step: TutorialStepDef;
 	stepIndex: number;
+	stepCount: number;
 	spotlightRect: DOMRect | null;
 	goNext: () => void;
 	skipTour: () => void;
+	/** Restart the full tour (Training step is intro-only, not create-a-program). */
+	startTutorial: () => void;
 };
 
 const TutorialContext = createContext<TutorialContextValue | null>(null);
@@ -42,49 +46,68 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [active, setActive] = useState(false);
+	const [mode, setMode] = useState<TutorialMode>("onboarding");
 	const [stepIndex, setStepIndex] = useState(0);
 	const [spotlightRect, setSpotlightRect] = useState<DOMRect | null>(null);
 	const advancingRef = useRef(false);
 
-	const step = TUTORIAL_STEPS[Math.min(stepIndex, TUTORIAL_STEPS.length - 1)];
+	const steps = useMemo(() => getTutorialSteps(mode), [mode]);
+	const stepCount = steps.length;
+	const step = steps[Math.min(stepIndex, stepCount - 1)];
 
 	const finishCompleted = useCallback(() => {
-		persistPatch({ completed: true, skipped: false, started: true, stepIndex: TUTORIAL_STEPS.length });
+		if (mode === "onboarding") {
+			persistPatch({ completed: true, skipped: false, started: true, stepIndex: stepCount });
+		}
 		setActive(false);
-	}, []);
+	}, [mode, stepCount]);
 
 	const skipTour = useCallback(() => {
-		persistPatch({ skipped: true, completed: false, started: true, stepIndex });
+		if (mode === "onboarding") {
+			persistPatch({ skipped: true, completed: false, started: true, stepIndex });
+		}
 		setActive(false);
-	}, [stepIndex]);
+	}, [mode, stepIndex]);
 
 	const advanceToIndex = useCallback(
 		(nextIndex: number) => {
 			if (advancingRef.current) return;
 			advancingRef.current = true;
-			const clamped = Math.max(0, Math.min(nextIndex, TUTORIAL_STEPS.length - 1));
-			const nextStep = TUTORIAL_STEPS[clamped];
+			const clamped = Math.max(0, Math.min(nextIndex, stepCount - 1));
+			const nextStep = steps[clamped];
 			if (nextStep?.path && nextStep.path !== location.pathname) {
 				navigate(nextStep.path);
 			}
 			setStepIndex(clamped);
-			persistPatch({ started: true, stepIndex: clamped, completed: false, skipped: false });
+			if (mode === "onboarding") {
+				persistPatch({ started: true, stepIndex: clamped, completed: false, skipped: false });
+			}
 			window.setTimeout(() => {
 				advancingRef.current = false;
 			}, 80);
 		},
-		[location.pathname, navigate]
+		[location.pathname, mode, navigate, stepCount, steps]
 	);
 
 	const goNext = useCallback(() => {
-		const cur = TUTORIAL_STEPS[stepIndex];
+		const cur = steps[stepIndex];
 		if (!cur || cur.kind !== "next") return;
-		if (stepIndex >= TUTORIAL_STEPS.length - 1) {
+		if (stepIndex >= stepCount - 1) {
 			finishCompleted();
 			return;
 		}
 		advanceToIndex(stepIndex + 1);
-	}, [advanceToIndex, finishCompleted, stepIndex]);
+	}, [advanceToIndex, finishCompleted, stepCount, stepIndex, steps]);
+
+	const startTutorial = useCallback(() => {
+		setMode("replay");
+		setStepIndex(0);
+		setActive(true);
+		const first = getTutorialSteps("replay")[0];
+		if (first?.path && first.path !== location.pathname) {
+			navigate(first.path);
+		}
+	}, [location.pathname, navigate]);
 
 	/** Bootstrap from storage + server (new users with no goals / quests). */
 	useEffect(() => {
@@ -122,14 +145,18 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 						nextStored = { ...nextStored, stepIndex: idx };
 						writeOnboarding(nextStored);
 					}
-					setStepIndex(nextStored.stepIndex);
-					setActive(true);
+					if (!cancelled) {
+						setMode("onboarding");
+						setStepIndex(nextStored.stepIndex);
+						setActive(true);
+					}
 				} else if (!nextStored.started && (goalCount > 0 || qc > 0)) {
 					persistPatch({ started: true, completed: true, skipped: false, stepIndex: 0 });
-					setActive(false);
+					if (!cancelled) setActive(false);
 				}
 			} catch {
 				if (!cancelled && stored?.started && !stored.completed && !stored.skipped) {
+					setMode("onboarding");
 					setStepIndex(stored.stepIndex);
 					setActive(true);
 				}
@@ -141,8 +168,8 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	useEffect(() => {
-		if (!active) return;
-		const cur = TUTORIAL_STEPS[stepIndex];
+		if (!active || mode !== "onboarding") return;
+		const cur = steps[stepIndex];
 		if (!cur || cur.kind !== "quest_completed") return;
 		let cancelled = false;
 		(async () => {
@@ -150,7 +177,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 				const p = await getProfile();
 				if (cancelled) return;
 				const qc = Number((p as { quickStats?: { questsCompleted?: number } })?.quickStats?.questsCompleted ?? 0);
-				if (qc >= 1 && stepIndex === 5) advanceToIndex(6);
+				if (qc >= 1 && cur.id === "quests_complete") advanceToIndex(stepIndex + 1);
 			} catch {
 				/* ignore */
 			}
@@ -158,18 +185,18 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 		return () => {
 			cancelled = true;
 		};
-	}, [active, stepIndex, advanceToIndex]);
+	}, [active, mode, stepIndex, advanceToIndex, steps]);
 
 	useEffect(() => {
 		const onGoal = () => {
-			if (!active) return;
-			if (TUTORIAL_STEPS[stepIndex]?.id !== "goals_create") return;
-			advanceToIndex(3);
+			if (!active || mode !== "onboarding") return;
+			if (steps[stepIndex]?.id !== "goals_create") return;
+			advanceToIndex(stepIndex + 1);
 		};
 		const onQuest = () => {
-			if (!active) return;
-			if (TUTORIAL_STEPS[stepIndex]?.id !== "quests_complete") return;
-			advanceToIndex(6);
+			if (!active || mode !== "onboarding") return;
+			if (steps[stepIndex]?.id !== "quests_complete") return;
+			advanceToIndex(stepIndex + 1);
 		};
 		window.addEventListener(ONBOARDING_GOAL_CREATED, onGoal);
 		window.addEventListener(ONBOARDING_QUEST_COMPLETED, onQuest);
@@ -177,7 +204,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 			window.removeEventListener(ONBOARDING_GOAL_CREATED, onGoal);
 			window.removeEventListener(ONBOARDING_QUEST_COMPLETED, onQuest);
 		};
-	}, [active, stepIndex, advanceToIndex]);
+	}, [active, mode, stepIndex, advanceToIndex, steps]);
 
 	useLayoutEffect(() => {
 		if (!active) {
@@ -210,13 +237,16 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const value = useMemo<TutorialContextValue>(
 		() => ({
 			active,
+			mode,
 			step,
 			stepIndex,
+			stepCount,
 			spotlightRect,
 			goNext,
 			skipTour,
+			startTutorial,
 		}),
-		[active, step, stepIndex, spotlightRect, goNext, skipTour]
+		[active, mode, step, stepIndex, stepCount, spotlightRect, goNext, skipTour, startTutorial]
 	);
 
 	return (
@@ -227,6 +257,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 					active={active}
 					step={step}
 					stepIndex={stepIndex}
+					stepCount={stepCount}
 					spotlightRect={spotlightRect}
 					goNext={goNext}
 					skipTour={skipTour}

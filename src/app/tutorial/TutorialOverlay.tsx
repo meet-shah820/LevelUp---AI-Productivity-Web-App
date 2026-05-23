@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import type { TutorialStepDef } from "./tutorialSteps";
-import { TUTORIAL_STEPS } from "./tutorialSteps";
 
 
 function renderBodyMarkdownish(text: string) {
@@ -23,6 +22,7 @@ export type TutorialOverlayProps = {
 	active: boolean;
 	step: TutorialStepDef;
 	stepIndex: number;
+	stepCount: number;
 	spotlightRect: DOMRect | null;
 	goNext: () => void;
 	skipTour: () => void;
@@ -125,7 +125,7 @@ function computeProgramDialogDock(main: DOMRect, dlg: DOMRect): ProgramDialogDoc
 	return { kind: "sheet" };
 }
 
-export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext, skipTour }: TutorialOverlayProps) {
+export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightRect, goNext, skipTour }: TutorialOverlayProps) {
 	const location = useLocation();
 	const navigate = useNavigate();
 
@@ -225,7 +225,7 @@ export function TutorialOverlay({ active, step, stepIndex, spotlightRect, goNext
 					<div className="flex items-start justify-between gap-3">
 						<div>
 							<p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/90 mb-1">
-								Step {stepIndex + 1} / {TUTORIAL_STEPS.length}
+								Step {stepIndex + 1} / {stepCount}
 							</p>
 							<h2 className="text-lg sm:text-xl font-bold text-white leading-snug">{step.title}</h2>
 						</div>

@@ -17,6 +17,7 @@ import {
   ListOrdered,
   CreditCard,
 } from "lucide-react";
+import { TutorialHelpButton } from "../tutorial/TutorialHelpButton";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
@@ -429,6 +430,8 @@ export function Layout() {
                 </div>
               </div>
             </div>
+
+            <TutorialHelpButton />
 
             {/* Notifications */}
             <Button
