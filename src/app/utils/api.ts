@@ -786,6 +786,10 @@ export type LeaderboardResponse = {
 	viewerInBracket: boolean;
 	viewerLeaderboardUnderdog?: LeaderboardUnderdogInfo | null;
 	sort: string;
+	/** When set, non-Elite viewers only receive this many `entries` per bracket. */
+	visibilityLimit?: number | null;
+	/** Elite (or admin preview) can load the full board up to the request limit. */
+	fullLeaderboardUnlocked?: boolean;
 };
 
 const LEADERBOARD_RANK_QUERY = new Set(["E", "D", "C", "B", "A", "S"]);

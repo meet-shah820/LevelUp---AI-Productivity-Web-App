@@ -103,6 +103,7 @@ export const TIER_CATALOG = [
 		monthlyPriceCents: 2499,
 		features: [
 			"Everything in Pro",
+			"Full leaderboard (all players per rank)",
 			"Priority AI quest briefing quality",
 			"Early access to new modes",
 			"Elite flair on leaderboard",

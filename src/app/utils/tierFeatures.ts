@@ -28,4 +28,8 @@ export const TIER_FOR = {
 	questsProgramSidebar: "starter",
 	foundingBadgeFlair: "starter",
 	leaderboardEliteBadge: "elite",
+	leaderboardFullView: "elite",
 } as const satisfies Record<string, BillingTierId>;
+
+/** Top players shown on the leaderboard for Free, Starter, and Pro. */
+export const LEADERBOARD_PREVIEW_ENTRY_LIMIT = 6;

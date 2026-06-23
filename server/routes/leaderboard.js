@@ -1,6 +1,12 @@
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
-import { buildLeaderboardSnapshot, LEADERBOARD_RANKS } from "../services/leaderboardSnapshot.js";
+import {
+	buildLeaderboardSnapshot,
+	LEADERBOARD_RANKS,
+	LEADERBOARD_PREVIEW_LIMIT,
+	LEADERBOARD_ELITE_MAX_LIMIT,
+} from "../services/leaderboardSnapshot.js";
+import { meetsMinTierWithReq } from "../utils/billingTier.js";
 
 const router = express.Router();
 
@@ -16,7 +22,11 @@ router.get("/", requireAuth, async (req, res) => {
 				requiresGoogle: true,
 			});
 		}
-		const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+		const requestedLimit = Math.min(LEADERBOARD_ELITE_MAX_LIMIT, Math.max(1, Number(req.query.limit) || 50));
+		const fullLeaderboardUnlocked = meetsMinTierWithReq(req.user, "elite", req);
+		const limit = fullLeaderboardUnlocked
+			? requestedLimit
+			: Math.min(requestedLimit, LEADERBOARD_PREVIEW_LIMIT);
 		const rawRank = req.query.rank != null ? String(req.query.rank).trim().toUpperCase() : "";
 		const rankBracket =
 			rawRank && LEADERBOARD_RANKS.includes(rawRank) ? rawRank : null;
@@ -24,6 +34,8 @@ router.get("/", requireAuth, async (req, res) => {
 			limit,
 			viewerId: req.user._id,
 			rankBracket,
+			visibilityLimit: fullLeaderboardUnlocked ? null : LEADERBOARD_PREVIEW_LIMIT,
+			fullLeaderboardUnlocked,
 		});
 		return res.json(data);
 	} catch (err) {

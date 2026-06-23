@@ -4,6 +4,12 @@ export const HUNTER_RANK_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1 };
 
 export const LEADERBOARD_RANKS = ["E", "D", "C", "B", "A", "S"];
 
+/** Non-Elite tiers see only the top N players per rank bracket. */
+export const LEADERBOARD_PREVIEW_LIMIT = 6;
+
+/** Max rows returned for Elite (and admin preview). */
+export const LEADERBOARD_ELITE_MAX_LIMIT = 100;
+
 /** Effective XP multiplier for the viewer while underdog window is active (ranking only). */
 export const LEADERBOARD_UNDERDOG_XP_MULT = 1.15;
 
@@ -49,7 +55,7 @@ function publicDisplayName(u) {
  *   rankBracket: E..S — when null/omitted, uses the viewer's current rank (falls back to E if no viewer).
  */
 export async function buildLeaderboardSnapshot(opts = {}) {
-	const limit = Math.min(100, Math.max(1, Number(opts.limit) || 50));
+	const limit = Math.min(LEADERBOARD_ELITE_MAX_LIMIT, Math.max(1, Number(opts.limit) || 50));
 	const viewerId = opts.viewerId != null ? String(opts.viewerId) : null;
 
 	let viewerRankNorm = "E";
@@ -126,5 +132,7 @@ export async function buildLeaderboardSnapshot(opts = {}) {
 		viewerInBracket: Boolean(viewerId && viewerRankNorm === rankBracket),
 		viewerLeaderboardUnderdog,
 		sort: "xp",
+		visibilityLimit: opts.visibilityLimit ?? null,
+		fullLeaderboardUnlocked: opts.fullLeaderboardUnlocked ?? true,
 	};
 }

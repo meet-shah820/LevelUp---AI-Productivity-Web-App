@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { motion } from "motion/react";
@@ -13,7 +14,7 @@ import {
 import { setAuthReturnPath } from "../utils/authRedirect";
 import { Radio, Trophy } from "lucide-react";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
-import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import { tierMeetsMinimum, TIER_FOR, LEADERBOARD_PREVIEW_ENTRY_LIMIT } from "../utils/tierFeatures";
 
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
@@ -129,6 +130,8 @@ export default function Leaderboard() {
 
 	const yourId = data?.yourRank?.userId;
 	const bracketHighlight = selectedRank ?? data?.rankBracket ?? null;
+	const fullLeaderboard = data?.fullLeaderboardUnlocked ?? tierMeetsMinimum(effectiveTier, TIER_FOR.leaderboardFullView);
+	const previewLimit = data?.visibilityLimit ?? LEADERBOARD_PREVIEW_ENTRY_LIMIT;
 
 	const visibleRankTabs = useMemo(() => {
 		const v = data?.viewerHunterRank;
@@ -373,9 +376,23 @@ export default function Leaderboard() {
 						<p className="p-6 text-white/45 text-center">No players in rank {data.rankBracket} yet.</p>
 					)}
 					{data.totalUsers > data.entries.length && (
-						<p className="px-3 py-2 text-xs text-white/35 border-t border-white/10">
-							Rank {data.rankBracket}: showing top {data.entries.length} of {data.totalUsers} players.
-						</p>
+						<div className="px-3 py-3 text-xs border-t border-white/10 space-y-2">
+							<p className="text-white/40">
+								Rank {data.rankBracket}: showing top {data.entries.length} of {data.totalUsers} players.
+							</p>
+							{!fullLeaderboard && data.totalUsers > previewLimit ? (
+								<p className="text-white/55 leading-relaxed">
+									Free, Starter, and Pro accounts see the top {previewLimit} players per rank.{" "}
+									<Link
+										to="/pricing?need=elite"
+										className="text-fuchsia-300 hover:text-fuchsia-200 underline underline-offset-2"
+									>
+										Upgrade to Elite
+									</Link>{" "}
+									to view the full leaderboard.
+								</p>
+							) : null}
+						</div>
 					)}
 				</Card>
 			)}
