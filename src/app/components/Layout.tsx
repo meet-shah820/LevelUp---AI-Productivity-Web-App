@@ -39,6 +39,7 @@ import {
 } from "../utils/siteAdminBypass";
 import type { BillingTierId } from "../utils/tierFeatures";
 import { EffectiveTierProvider } from "../context/EffectiveTierContext";
+import { CelebrationHost } from "./CelebrationModal";
 
 type Tier = BillingTierId;
 function tierRank(t: Tier): number {
@@ -519,6 +520,7 @@ export function Layout() {
         </main>
       </div>
     </div>
+    <CelebrationHost />
     </TutorialProvider>
   );
 }

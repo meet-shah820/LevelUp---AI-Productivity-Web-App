@@ -1,20 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Copy, Gift, Share2, Users, Zap } from "lucide-react";
+import { Copy, Gift, Users, Zap } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "sonner";
 import { getReferrals } from "../utils/api";
-import { trackContentShared, trackReferralLinkCopied } from "../analytics/posthog";
-import {
-	SHARE_PLATFORMS,
-	buildReferralSharePayload,
-	canUseNativeShare,
-	copyToClipboard,
-	sharePayload,
-	type SharePlatform,
-} from "../utils/socialShare";
+import { trackReferralLinkCopied } from "../analytics/posthog";
+import { copyToClipboard } from "../utils/socialShare";
 
 type ReferralData = {
 	code: string;
@@ -50,11 +43,6 @@ export default function Referrals() {
 		void load();
 	}, []);
 
-	const sharePayloadMemo = useMemo(() => {
-		if (!data) return null;
-		return buildReferralSharePayload(data.link, data.code);
-	}, [data]);
-
 	const handleCopyLink = async () => {
 		if (!data?.link) return;
 		const ok = await copyToClipboard(data.link);
@@ -70,19 +58,6 @@ export default function Referrals() {
 		if (ok) toast.success("Referral code copied");
 		else toast.error("Could not copy code");
 	};
-
-	const handleShare = async (platform: SharePlatform) => {
-		if (!sharePayloadMemo) return;
-		const result = await sharePayload(platform, sharePayloadMemo);
-		if (result === "copied") toast.success("Copied to clipboard");
-		else if (result === "shared") toast.success("Shared");
-		if (result === "copied" || result === "shared" || result === "opened") {
-			trackContentShared({ contentType: "referral", platform });
-		}
-	};
-
-	const nativeShare = canUseNativeShare();
-	const sharePlatforms = SHARE_PLATFORMS.filter((p) => p.id !== "native" || nativeShare);
 
 	return (
 		<div className="min-h-full p-4 lg:p-8 space-y-6">
@@ -129,29 +104,6 @@ export default function Referrals() {
 							)}
 						</div>
 					</div>
-
-					{data && sharePayloadMemo ? (
-						<div className="pt-2 border-t border-purple-500/15">
-							<p className="text-xs text-gray-500 mb-3 flex items-center gap-1.5">
-								<Share2 className="w-3.5 h-3.5" />
-								Share on social media
-							</p>
-							<div className="flex flex-wrap gap-2">
-								{sharePlatforms.map((p) => (
-									<Button
-										key={p.id}
-										type="button"
-										variant="outline"
-										size="sm"
-										className="border-purple-500/30 text-gray-200 hover:bg-white/10 hover:text-white"
-										onClick={() => void handleShare(p.id)}
-									>
-										{p.label}
-									</Button>
-								))}
-							</div>
-						</div>
-					) : null}
 				</Card>
 			</motion.div>
 

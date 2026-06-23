@@ -1,4 +1,5 @@
 import posthog from "posthog-js";
+import { hasAnalyticsConsent } from "./cookieConsent";
 
 const POSTHOG_KEY =
 	(typeof import.meta !== "undefined" && (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_POSTHOG_KEY) ||
@@ -14,7 +15,7 @@ export function isPostHogEnabled(): boolean {
 }
 
 export function initPostHog(): void {
-	if (initialized || typeof window === "undefined" || !isPostHogEnabled()) return;
+	if (initialized || typeof window === "undefined" || !isPostHogEnabled() || !hasAnalyticsConsent()) return;
 
 	posthog.init(POSTHOG_KEY.trim(), {
 		api_host: POSTHOG_HOST.replace(/\/$/, ""),
@@ -22,6 +23,7 @@ export function initPostHog(): void {
 		capture_pageview: false,
 		capture_pageleave: true,
 		autocapture: true,
+		opt_out_capturing_by_default: false,
 		session_recording: {
 			maskAllInputs: true,
 			maskTextSelector: "[data-ph-mask]",
@@ -29,6 +31,28 @@ export function initPostHog(): void {
 	});
 
 	initialized = true;
+}
+
+/** Apply stored consent — init PostHog or opt out after a preference change. */
+export function applyAnalyticsConsent(): void {
+	if (typeof window === "undefined" || !isPostHogEnabled()) return;
+
+	if (hasAnalyticsConsent()) {
+		if (!initialized) {
+			initPostHog();
+		} else {
+			posthog.opt_in_capturing();
+		}
+		if (initialized) {
+			capturePageView(`${window.location.pathname}${window.location.search}`);
+		}
+		return;
+	}
+
+	if (initialized) {
+		posthog.opt_out_capturing();
+		posthog.reset();
+	}
 }
 
 export function getPostHog() {
@@ -131,7 +155,7 @@ export function trackCheckoutCanceled() {
 	capture("checkout_canceled");
 }
 
-export function trackContentShared(props: { contentType: "achievement" | "referral"; platform: string }) {
+export function trackContentShared(props: { contentType: "achievement" | "referral" | "all_quests"; platform: string }) {
 	capture("content_shared", { content_type: props.contentType, platform: props.platform });
 }
 

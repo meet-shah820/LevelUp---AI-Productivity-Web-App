@@ -46,6 +46,7 @@ import {
   TierRequiredError,
 } from "../utils/api";
 import { toast } from "sonner";
+import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 import { trackGoalCreated } from "../analytics/posthog";
@@ -263,7 +264,7 @@ export default function Goals() {
       // Create new goal
       setGoalTopicError(null);
       try {
-        await createGoal({
+        const created = await createGoal({
           title: formData.title,
           category: formData.category,
           rarity: formData.rarity,
@@ -272,6 +273,7 @@ export default function Goals() {
           userProfile: formData.userProfile,
         });
         trackGoalCreated({ category: formData.category, rarity: formData.rarity });
+        dispatchCelebrations(celebrationsFromQuestCompleteResponse(created));
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));

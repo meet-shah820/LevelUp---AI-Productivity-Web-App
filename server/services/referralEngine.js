@@ -9,26 +9,34 @@ export const REFERRAL_MILESTONES = {
 	first_quest: { referrerXp: 75, refereeXp: 0, label: "Friend completes their first quest" },
 };
 
-function randomSuffix() {
-	return Math.random().toString(36).slice(2, 6).toUpperCase();
+const CODE_PREFIX = "HUNT";
+const CODE_BODY_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomCodeBody(length = 6) {
+	let out = "";
+	for (let i = 0; i < length; i++) {
+		out += CODE_BODY_CHARS[Math.floor(Math.random() * CODE_BODY_CHARS.length)];
+	}
+	return out;
 }
 
-export function normalizeReferralCode(raw) {
-	return String(raw ?? "")
-		.trim()
-		.toUpperCase()
-		.replace(/[^A-Z0-9]/g, "")
-		.slice(0, 16);
-}
-
-export async function ensureReferralCode(user) {
-	if (user.referralCode) return user.referralCode;
-	const base = String(user.username || "LVL")
+function usernameCodePrefix(username) {
+	return String(username || "")
 		.replace(/[^a-z0-9]/gi, "")
 		.slice(0, 6)
-		.toUpperCase() || "LVL";
+		.toUpperCase();
+}
+
+/** True when the code was generated from the user's username (legacy format). */
+function isUsernameDerivedCode(code, username) {
+	const prefix = usernameCodePrefix(username);
+	if (!prefix || prefix.length < 2) return false;
+	return String(code || "").toUpperCase().startsWith(prefix);
+}
+
+async function assignNewReferralCode(user) {
 	for (let i = 0; i < 24; i++) {
-		const candidate = `${base}${randomSuffix()}`.slice(0, 12);
+		const candidate = `${CODE_PREFIX}${randomCodeBody(6)}`;
 		// eslint-disable-next-line no-await-in-loop
 		const taken = await User.findOne({ referralCode: candidate, _id: { $ne: user._id } }).lean();
 		if (!taken) {
@@ -37,10 +45,25 @@ export async function ensureReferralCode(user) {
 			return candidate;
 		}
 	}
-	const fallback = `LVL${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+	const fallback = `${CODE_PREFIX}${Date.now().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "")}`.slice(0, 10);
 	user.referralCode = fallback;
 	await user.save();
 	return fallback;
+}
+
+export async function ensureReferralCode(user) {
+	if (user.referralCode && !isUsernameDerivedCode(user.referralCode, user.username)) {
+		return user.referralCode;
+	}
+	return assignNewReferralCode(user);
+}
+
+export function normalizeReferralCode(raw) {
+	return String(raw ?? "")
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "")
+		.slice(0, 16);
 }
 
 async function grantXp(userId, xp, historyType, meta) {

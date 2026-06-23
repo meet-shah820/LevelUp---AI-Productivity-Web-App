@@ -44,6 +44,17 @@ export function buildAchievementSharePayload(achievement: {
 	};
 }
 
+export function buildAllQuestsSharePayload(): SharePayload {
+	const origin = getAppOrigin();
+	const url = `${origin}/quests`;
+	const text = `I completed all my daily, weekly, and monthly training quests on ${APP_NAME}! Quests, XP, and Hunter rank — join me.`;
+	return {
+		title: `All quests complete — ${APP_NAME}`,
+		text,
+		url,
+	};
+}
+
 export function buildReferralSharePayload(link: string, code: string): SharePayload {
 	const text = `Join me on ${APP_NAME} — gamified training quests, XP, and Hunter rank. Use my invite code ${code} for bonus XP when you sign up!`;
 	return {

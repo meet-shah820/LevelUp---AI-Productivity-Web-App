@@ -40,6 +40,7 @@ import {
 } from "../utils/api";
 import { toast } from "sonner";
 import { LegalFooterLinks } from "../components/legal/LegalFooterLinks";
+import { CookiePreferences } from "../components/CookiePreferences";
 import {
   clearSiteAdminBypass,
   readSiteAdminBypassActive,
@@ -1101,7 +1102,9 @@ export default function Settings() {
               <p className="text-sm text-gray-400 mb-4">
                 Privacy, terms, cookies, and refund information for LevelUp.
               </p>
-              <LegalFooterLinks align="start" className="text-sm" />
+              <LegalFooterLinks align="start" className="text-sm mb-6" />
+              <h3 className="text-sm font-semibold text-white mb-2">Cookie preferences</h3>
+              <CookiePreferences />
             </Card>
           </motion.div>
           )}

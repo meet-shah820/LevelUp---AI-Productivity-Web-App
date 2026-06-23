@@ -17,6 +17,7 @@ import { calculateLevelFromXp } from "../utils/level.js";
 import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
+import { achievementsForClient } from "../utils/achievementClient.js";
 import { findRelevantFitnessLibrary } from "../services/fitnessLibraryQuery.js";
 import {
 	enrichAndPersistGoalProgramModules,
@@ -989,7 +990,7 @@ router.post("/", async (req, res) => {
 		const questsCompleted = hist.filter((h) => h.type === "quest_complete" && h.xpChange > 0).length;
 		const focusXp = hist.filter((h) => h.type === "focus_session").reduce((s, h) => s + (h.xpChange || 0), 0);
 		const focusHours = focusXp / (9 * 60);
-		await evaluateAndRecordAchievements({
+		const newlyUnlockedIds = await evaluateAndRecordAchievements({
 			user: userForAchievements || user,
 			goals: goalsActive,
 			questsCompleted,
@@ -1000,7 +1001,11 @@ router.post("/", async (req, res) => {
 			preferGemini: meetsMinTierWithReq(userForAchievements || user, "elite", req),
 		});
 
-		return res.status(201).json({ goalId: goal._id, rank: rank || user.rank || "E" });
+		return res.status(201).json({
+			goalId: goal._id,
+			rank: rank || user.rank || "E",
+			newlyUnlockedAchievements: achievementsForClient(newlyUnlockedIds),
+		});
 	} catch (err) {
 		// eslint-disable-next-line no-console
 		console.error(err);

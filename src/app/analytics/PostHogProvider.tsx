@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { CookieConsentBanner } from "../components/CookieConsentBanner";
 import { getBillingStatus, getProfile, BILLING_UPDATED_EVENT, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
-import { capturePageView, identifyUser, initPostHog, isPostHogEnabled } from "./posthog";
+import { COOKIE_CONSENT_UPDATED_EVENT, hasAnalyticsConsent } from "./cookieConsent";
+import { applyAnalyticsConsent, capturePageView, identifyUser, isPostHogEnabled } from "./posthog";
 
 function PostHogPageTracker() {
 	const location = useLocation();
 
 	useEffect(() => {
-		if (!isPostHogEnabled()) return;
+		if (!isPostHogEnabled() || !hasAnalyticsConsent()) return;
 		capturePageView(`${location.pathname}${location.search}`);
 	}, [location.pathname, location.search]);
 
@@ -16,13 +18,13 @@ function PostHogPageTracker() {
 
 function PostHogUserSync() {
 	useEffect(() => {
-		if (!isPostHogEnabled()) return;
-		const token = localStorage.getItem("auth_token");
-		if (!token) return;
-
 		let cancelled = false;
 
 		async function sync() {
+			if (!isPostHogEnabled() || !hasAnalyticsConsent()) return;
+			const token = localStorage.getItem("auth_token");
+			if (!token) return;
+
 			try {
 				const [profile, billing] = await Promise.all([
 					getProfile(),
@@ -50,26 +52,32 @@ function PostHogUserSync() {
 		window.addEventListener(BILLING_UPDATED_EVENT, refresh);
 		window.addEventListener(PROFILE_UPDATED_EVENT, refresh);
 		window.addEventListener(RANK_UPDATED_EVENT, refresh);
+		window.addEventListener(COOKIE_CONSENT_UPDATED_EVENT, refresh);
 
 		return () => {
 			cancelled = true;
 			window.removeEventListener(BILLING_UPDATED_EVENT, refresh);
 			window.removeEventListener(PROFILE_UPDATED_EVENT, refresh);
 			window.removeEventListener(RANK_UPDATED_EVENT, refresh);
+			window.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, refresh);
 		};
 	}, []);
 
 	return null;
 }
 
-/** Root route wrapper: pageviews for every screen + user traits when signed in. */
+/** Root route wrapper: consent banner, pageviews, and user traits when analytics is allowed. */
 export function PostHogRouteShell() {
 	useEffect(() => {
-		initPostHog();
+		applyAnalyticsConsent();
+		const onConsent = () => applyAnalyticsConsent();
+		window.addEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
+		return () => window.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
 	}, []);
 
 	return (
 		<>
+			<CookieConsentBanner />
 			<PostHogPageTracker />
 			<PostHogUserSync />
 			<Outlet />

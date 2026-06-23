@@ -9,6 +9,8 @@ import Goal from "../models/Goal.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
 import { recalculateAndSaveUserRank } from "../services/rankEngine.js";
 import { meetsMinTierWithReq } from "../utils/billingTier.js";
+import { achievementsForClient } from "../utils/achievementClient.js";
+import { didJustCompleteAllQuestTimeframes } from "../utils/questTimeframeCompletion.js";
 import { scheduleLeaderboardBroadcast } from "../services/leaderboardHub.js";
 import { generateQuestDetails } from "../services/gemini.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
@@ -681,7 +683,8 @@ router.patch("/:id/complete", async (req, res) => {
 			{ $group: { _id: null, total: { $sum: "$xpChange" } } },
 		]);
 		const focusHours = (focusXp?.[0]?.total || 0) / (9 * 60);
-		await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });
+		const newlyUnlockedIds = await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });
+		const allQuestsComplete = await didJustCompleteAllQuestTimeframes(user._id, quest._id);
 
 		const rank = await recalculateAndSaveUserRank(user._id, {
 			preferGemini: meetsMinTierWithReq(user, "elite", req),
@@ -696,6 +699,8 @@ router.patch("/:id/complete", async (req, res) => {
 			comebackMultiplier: mult,
 			comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining ?? 0,
 			easyModeTier: user.easyModeTier ?? 0,
+			newlyUnlockedAchievements: achievementsForClient(newlyUnlockedIds),
+			allQuestsComplete,
 			user: {
 				level: user.level,
 				xp: user.xp,

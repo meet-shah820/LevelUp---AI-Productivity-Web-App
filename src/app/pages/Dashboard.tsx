@@ -32,6 +32,7 @@ import {
   type WeeklyReportShown,
 } from "../utils/api";
 import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
+import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
 import { WeeklyReportModal } from "../components/WeeklyReportModal";
 import { readOnboarding } from "../tutorial/tutorialStorage";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
@@ -309,6 +310,7 @@ export default function Dashboard() {
         xp: quest?.xp,
         leveledUp: Boolean((resp as { leveledUp?: boolean })?.leveledUp),
       });
+      dispatchCelebrations(celebrationsFromQuestCompleteResponse(resp));
       if (resp.leveledUp) {
         setLeveledUp(true);
         setTimeout(() => setLeveledUp(false), 1800);

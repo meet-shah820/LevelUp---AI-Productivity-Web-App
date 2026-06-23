@@ -182,6 +182,10 @@ export default function Auth() {
 										I agree to the{" "}
 										<Link to="/privacy" className="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline">
 											Privacy Policy
+										</Link>{" "}
+										and{" "}
+										<Link to="/legal/cookies" className="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline">
+											Cookie Policy
 										</Link>
 									</Label>
 								</div>
@@ -219,6 +223,10 @@ export default function Auth() {
 								and acknowledge our{" "}
 								<Link to="/privacy" className="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline">
 									Privacy Policy
+								</Link>{" "}
+								and{" "}
+								<Link to="/legal/cookies" className="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline">
+									Cookie Policy
 								</Link>
 								.
 							</p>

@@ -18,6 +18,7 @@ import {
 } from "../utils/api";
 import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
 import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
+import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
@@ -618,6 +619,7 @@ export default function Quests() {
           leveledUp: Boolean((resp as { leveledUp?: boolean })?.leveledUp),
           timerUsed: timerActiveSeconds > 0,
         });
+        dispatchCelebrations(celebrationsFromQuestCompleteResponse(resp));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
         window.dispatchEvent(new CustomEvent(ONBOARDING_QUEST_COMPLETED));
       } catch {
