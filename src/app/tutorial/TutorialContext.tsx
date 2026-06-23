@@ -50,9 +50,10 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const [mode, setMode] = useState<TutorialMode>("onboarding");
 	const [stepIndex, setStepIndex] = useState(0);
 	const [spotlightRect, setSpotlightRect] = useState<DOMRect | null>(null);
+	const [hasGoals, setHasGoals] = useState(false);
 	const advancingRef = useRef(false);
 
-	const steps = useMemo(() => getTutorialSteps(mode), [mode]);
+	const steps = useMemo(() => getTutorialSteps(mode, hasGoals), [mode, hasGoals]);
 	const stepCount = steps.length;
 	const step = steps[Math.min(stepIndex, stepCount - 1)];
 
@@ -103,13 +104,23 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	}, [advanceToIndex, finishCompleted, stepCount, stepIndex, steps]);
 
 	const startTutorial = useCallback(() => {
-		setMode("replay");
-		setStepIndex(0);
-		setActive(true);
-		const first = getTutorialSteps("replay")[0];
-		if (first?.path && first.path !== location.pathname) {
-			navigate(first.path);
-		}
+		void (async () => {
+			let goals = false;
+			try {
+				const g = await getGoals();
+				goals = Array.isArray((g as { goals?: unknown }).goals) ? (g as { goals: unknown[] }).goals.length >= 1 : false;
+			} catch {
+				/* ignore */
+			}
+			setHasGoals(goals);
+			setMode("replay");
+			setStepIndex(0);
+			setActive(true);
+			const first = getTutorialSteps("replay", goals)[0];
+			if (first?.path && first.path !== location.pathname) {
+				navigate(first.path);
+			}
+		})();
 	}, [location.pathname, navigate]);
 
 	/** Bootstrap from storage + server (new users with no goals / quests). */
@@ -126,6 +137,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 				if (cancelled) return;
 				const goalCount = Array.isArray((g as { goals?: unknown }).goals) ? (g as { goals: unknown[] }).goals.length : 0;
 				const qc = Number((p as { quickStats?: { questsCompleted?: number } })?.quickStats?.questsCompleted ?? 0);
+				if (!cancelled) setHasGoals(goalCount >= 1);
 
 				let nextStored: OnboardingPersisted = stored || {
 					started: false,
@@ -192,8 +204,10 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		const onGoal = () => {
-			if (!active || mode !== "onboarding") return;
+			if (!active) return;
 			if (steps[stepIndex]?.id !== "goals_create") return;
+			setHasGoals(true);
+			if (mode !== "onboarding") return;
 			advanceToIndex(stepIndex + 1);
 		};
 		const onQuest = () => {

@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import type { TutorialStepDef } from "./tutorialSteps";
+import { stepRequiresProgramCreation, type TutorialStepDef } from "./tutorialSteps";
 
 function renderBodyMarkdownish(text: string) {
 	const parts = text.split(/\*\*(.+?)\*\*/g);
@@ -32,6 +32,8 @@ const PAGE_MAIN_SELECTOR = '[data-tutorial="page-main"]';
 const OPEN_MODAL_SELECTOR = '[data-slot="dialog-content"], [data-slot="alert-dialog-content"]';
 const EDGE = 12;
 const GAP = 12;
+/** Extra breathing room between the tutorial strip and the program dialog. */
+const DIALOG_ABOVE_GAP = 20;
 const OVERLAP_PAD = 10;
 /** Matches Layout top bar `h-20` so the tutorial strip sits below it. */
 const APP_HEADER_HEIGHT = 80;
@@ -204,13 +206,15 @@ function isProgramDialogVisible(): boolean {
 }
 
 /** Pin the tutorial strip directly above the program dialog (mobile / fallback). */
-function computeAboveDialogPlacement(dlg: DOMRect, panelW: number, panelH: number): AboveDialogPlacement {
+function computeAboveDialogPlacement(dlg: DOMRect, panelW: number, panelH: number, vh: number): AboveDialogPlacement {
 	const vw = window.innerWidth;
 	const minTop = APP_HEADER_HEIGHT + EDGE;
 	const width = Math.min(panelW, dlg.width + 16, vw - EDGE * 2);
 	const left = Math.max(EDGE, dlg.left + (dlg.width - width) / 2);
-	const maxHeightPx = Math.max(64, Math.min(panelH, dlg.top - GAP - minTop));
-	const top = Math.max(minTop, dlg.top - GAP - maxHeightPx);
+	const availableH = dlg.top - DIALOG_ABOVE_GAP - minTop;
+	const maxHeightPx = Math.min(panelH, Math.max(0, availableH));
+	/** Anchor the panel bottom edge `DIALOG_ABOVE_GAP` px above the dialog top. */
+	const bottom = vh - dlg.top + DIALOG_ABOVE_GAP;
 
 	return {
 		mode: "above-dialog",
@@ -218,9 +222,10 @@ function computeAboveDialogPlacement(dlg: DOMRect, panelW: number, panelH: numbe
 			position: "fixed",
 			zIndex: 60,
 			pointerEvents: "none",
-			top,
+			bottom,
 			left,
 			width,
+			maxHeight: maxHeightPx,
 			display: "flex",
 			flexDirection: "column",
 			alignItems: "stretch",
@@ -247,13 +252,13 @@ function computePlacement(
 	if (programDialogOpen && dlgEl instanceof HTMLElement) {
 		const dlgRect = dlgEl.getBoundingClientRect();
 		if (vw < 768) {
-			return computeAboveDialogPlacement(dlgRect, panelW, panelH);
+			return computeAboveDialogPlacement(dlgRect, panelW, panelH, vh);
 		}
 		if (mainEl instanceof HTMLElement) {
 			const slot = computeDesktopSlot(mainEl.getBoundingClientRect(), dlgRect);
 			if (slot) return slot;
 		}
-		return computeAboveDialogPlacement(dlgRect, panelW, panelH);
+		return computeAboveDialogPlacement(dlgRect, panelW, panelH, vh);
 	}
 
 	const includeSpotlight = !programDialogOpen;
@@ -330,10 +335,9 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 
 	const wrongPage = step.path && location.pathname !== step.path;
 
-	const awaitingProgramCreation =
-		programDialogOpen || (step.kind === "goal_created" && !wrongPage);
-	const showNext = step.kind === "next" && !awaitingProgramCreation;
-	const nextDisabled = wrongPage || programDialogOpen;
+	const requiresProgramCreation = !wrongPage && stepRequiresProgramCreation(step);
+	const showNext = step.kind === "next" || requiresProgramCreation;
+	const nextDisabled = wrongPage || programDialogOpen || requiresProgramCreation;
 
 	const hint = useMemo(() => {
 		if (!wrongPage) return null;
@@ -433,9 +437,9 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 							</Button>
 						) : (
 							<p className="text-xs text-white/45 sm:text-right flex-1">
-								{step.kind === "goal_created" || programDialogOpen
-									? "Waiting for you to create a program…"
-									: "Waiting for a quest completion…"}
+								{step.kind === "quest_completed"
+									? "Waiting for a quest completion…"
+									: "Waiting for you to create a program…"}
 							</p>
 						)}
 					</div>

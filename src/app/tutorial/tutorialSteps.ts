@@ -38,8 +38,8 @@ export const GOALS_CREATE_STEP: TutorialStepDef = {
 	id: "goals_create",
 	path: "/goals",
 	kind: "goal_created",
-	title: "Complete the quest",
-	body: "Tap **Add program** (or **Add your first program**), fill the form, and submit. You earn **XP** for your first program, same idea as quest rewards. This step advances automatically when the program is created.",
+	title: "Training programs",
+	body: "The **Training** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Tap **Add program** (or **Add your first program**), fill the form, and submit — this step advances automatically when your program is created.",
 	spotlightSelector: '[data-tutorial="add-goal"]',
 };
 
@@ -166,14 +166,19 @@ export const TUTORIAL_STEPS: TutorialStepDef[] = [
 	...TUTORIAL_TAIL_AFTER_QUESTS,
 ];
 
-function applyReplaySubstitutions(step: TutorialStepDef): TutorialStepDef {
-	if (step.id === "goals_create") return TRAINING_INTRO_STEP;
+function applyReplaySubstitutions(step: TutorialStepDef, hasGoals: boolean): TutorialStepDef {
+	if (step.id === "goals_create") return hasGoals ? TRAINING_INTRO_STEP : GOALS_CREATE_STEP;
 	if (step.id === "quests_intro") return QUESTS_INTRO_REPLAY;
 	if (step.id === "quests_complete") return QUESTS_COMPLETE_INTRO_STEP;
 	return step;
 }
 
-export function getTutorialSteps(mode: TutorialMode): TutorialStepDef[] {
+/** Training-page step where the user must create a program before advancing. */
+export function stepRequiresProgramCreation(step: TutorialStepDef): boolean {
+	return step.path === "/goals" && (step.kind === "goal_created" || step.id === "goals_create");
+}
+
+export function getTutorialSteps(mode: TutorialMode, hasGoals = false): TutorialStepDef[] {
 	if (mode === "onboarding") return TUTORIAL_STEPS;
-	return TUTORIAL_STEPS.map(applyReplaySubstitutions);
+	return TUTORIAL_STEPS.map((s) => applyReplaySubstitutions(s, hasGoals));
 }
