@@ -16,25 +16,98 @@ export type SharePayload = {
 
 const APP_NAME = "LevelUp";
 
+let cachedPublicOrigin: string | null = null;
+let publicOriginPromise: Promise<string> | null = null;
+
 function encode(value: string) {
 	return encodeURIComponent(value);
 }
 
+function readVitePublicOrigin(): string {
+	const raw =
+		(typeof import.meta !== "undefined" &&
+			(import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_PUBLIC_APP_ORIGIN) ||
+		"";
+	return typeof raw === "string" ? raw.trim().replace(/\/$/, "") : "";
+}
+
+/** Synchronous best-effort origin (env cache, then current browser origin). */
 export function getAppOrigin(): string {
+	const fromEnv = readVitePublicOrigin();
+	if (fromEnv) return fromEnv;
+	if (cachedPublicOrigin) return cachedPublicOrigin;
 	if (typeof window !== "undefined" && window.location?.origin) {
-		return window.location.origin;
+		return window.location.origin.replace(/\/$/, "");
 	}
 	return "";
 }
 
-export function buildAchievementSharePayload(achievement: {
-	id: string;
-	name: string;
-	description?: string;
-	rarity?: string;
-}): SharePayload {
-	const origin = getAppOrigin();
-	const url = `${origin}/achievements?highlight=${encodeURIComponent(achievement.id)}`;
+async function fetchPublicOriginFromApi(): Promise<string | null> {
+	try {
+		const apiBase =
+			(typeof import.meta !== "undefined" &&
+				(import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE) ||
+			"";
+		const base = String(apiBase).replace(/\/$/, "");
+		const res = await fetch(`${base}/api/public-config`, { credentials: "omit" });
+		if (!res.ok) return null;
+		const data = (await res.json()) as { appPublicOrigin?: string | null };
+		const origin = typeof data.appPublicOrigin === "string" ? data.appPublicOrigin.trim().replace(/\/$/, "") : "";
+		return origin || null;
+	} catch {
+		return null;
+	}
+}
+
+/** Resolve canonical public app origin (Vite env → API config → current window). */
+export async function resolvePublicAppOrigin(): Promise<string> {
+	const fromEnv = readVitePublicOrigin();
+	if (fromEnv) return fromEnv;
+	if (cachedPublicOrigin) return cachedPublicOrigin;
+	if (!publicOriginPromise) {
+		publicOriginPromise = (async () => {
+			const fromApi = await fetchPublicOriginFromApi();
+			if (fromApi) {
+				cachedPublicOrigin = fromApi;
+				return fromApi;
+			}
+			return getAppOrigin();
+		})().finally(() => {
+			publicOriginPromise = null;
+		});
+	}
+	return publicOriginPromise;
+}
+
+/** Rebuild a share URL with the resolved public origin (path + query preserved). */
+export function absolutizeSharePayload(payload: SharePayload, origin: string): SharePayload {
+	const base = origin.replace(/\/$/, "");
+	if (!base) return payload;
+	try {
+		const parsed = new URL(payload.url);
+		return {
+			...payload,
+			url: `${base}${parsed.pathname}${parsed.search}${parsed.hash}`,
+		};
+	} catch {
+		if (payload.url.startsWith("/")) {
+			return { ...payload, url: `${base}${payload.url}` };
+		}
+		return payload;
+	}
+}
+
+export function buildAchievementSharePayload(
+	achievement: {
+		id: string;
+		name: string;
+		description?: string;
+		rarity?: string;
+	},
+	origin?: string
+): SharePayload {
+	const base = (origin || getAppOrigin()).replace(/\/$/, "");
+	const url = `${base}/achievements?highlight=${encodeURIComponent(achievement.id)}`;
 	const rarity = achievement.rarity ? ` (${achievement.rarity})` : "";
 	const text = `I unlocked the "${achievement.name}"${rarity} achievement on ${APP_NAME}! ${achievement.description || "Training quests, XP, and Hunter rank — join me."}`;
 	return {
@@ -44,9 +117,9 @@ export function buildAchievementSharePayload(achievement: {
 	};
 }
 
-export function buildAllQuestsSharePayload(): SharePayload {
-	const origin = getAppOrigin();
-	const url = `${origin}/quests`;
+export function buildAllQuestsSharePayload(origin?: string): SharePayload {
+	const base = (origin || getAppOrigin()).replace(/\/$/, "");
+	const url = `${base}/quests`;
 	const text = `I completed all my daily, weekly, and monthly training quests on ${APP_NAME}! Quests, XP, and Hunter rank — join me.`;
 	return {
 		title: `All quests complete — ${APP_NAME}`,
@@ -110,7 +183,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 export async function sharePayload(platform: SharePlatform, payload: SharePayload): Promise<"shared" | "copied" | "opened"> {
 	if (platform === "copy") {
-		const ok = await copyToClipboard(`${payload.text}\n${payload.url}`);
+		const ok = await copyToClipboard(payload.url);
 		return ok ? "copied" : "opened";
 	}
 	if (platform === "native" && typeof navigator !== "undefined" && navigator.share) {

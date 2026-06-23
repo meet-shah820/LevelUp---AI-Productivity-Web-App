@@ -1,3 +1,9 @@
+import {
+	buildAchievementSharePayload,
+	buildAllQuestsSharePayload,
+	type SharePayload,
+} from "./socialShare";
+
 export type CelebrationAchievement = {
 	id: string;
 	name: string;
@@ -36,4 +42,11 @@ export function celebrationsFromQuestCompleteResponse(resp: {
 		items.push({ kind: "achievement", achievement });
 	}
 	return items;
+}
+
+export function buildCelebrationSharePayload(item: CelebrationItem, origin: string): SharePayload {
+	if (item.kind === "achievement") {
+		return buildAchievementSharePayload(item.achievement, origin);
+	}
+	return buildAllQuestsSharePayload(origin);
 }
