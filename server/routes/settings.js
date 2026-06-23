@@ -1,7 +1,8 @@
 import express from "express";
-import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import { meetsMinTierWithReq } from "../utils/billingTier.js";
+import { requireAuth } from "../middleware/auth.js";
+import { resetUserProgress } from "../services/resetUserProgress.js";
 
 const router = express.Router();
 
@@ -42,6 +43,17 @@ router.put("/", async (req, res) => {
 		// eslint-disable-next-line no-console
 		console.error(e);
 		return res.status(500).json({ error: "Failed to save settings" });
+	}
+});
+
+router.post("/reset-progress", requireAuth, async (req, res) => {
+	try {
+		const result = await resetUserProgress(req.user._id);
+		return res.json(result);
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error(e);
+		return res.status(500).json({ error: "failed to reset" });
 	}
 });
 

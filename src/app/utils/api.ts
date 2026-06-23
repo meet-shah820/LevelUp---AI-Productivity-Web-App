@@ -414,9 +414,46 @@ export async function changePassword(payload: { username: string; currentPasswor
 }
 
 export async function resetAll() {
-	const res = await apiFetch("/api/admin/reset", { method: "POST" });
-	if (!res.ok) throw new Error("Failed to reset");
-	return res.json();
+	const attempts = ["/api/settings/reset-progress", "/api/admin/reset"];
+	let lastStatus = 0;
+	let lastBody = "";
+	for (const path of attempts) {
+		const res = await apiFetch(path, { method: "POST" });
+		lastStatus = res.status;
+		lastBody = await res.text();
+		if (res.ok) {
+			try {
+				return JSON.parse(lastBody);
+			} catch {
+				return { ok: true };
+			}
+		}
+		if (res.status !== 404) break;
+	}
+	if (lastStatus === 401) {
+		throw new ApiUnauthorizedError("Your session expired. Please sign in again and retry.");
+	}
+	throw new Error(
+		lastBody ? friendlyResetError(lastStatus, lastBody) : `Failed to reset (HTTP ${lastStatus})`
+	);
+}
+
+function friendlyResetError(status: number, text: string): string {
+	try {
+		const j = JSON.parse(text) as { error?: string };
+		if (typeof j?.error === "string" && j.error.trim()) return j.error.trim();
+	} catch {
+		/* not JSON */
+	}
+	return `Failed to reset (HTTP ${status})`;
+}
+
+export class ApiUnauthorizedError extends Error {
+	readonly code = "auth_required" as const;
+	constructor(message = "Unauthorized") {
+		super(message);
+		this.name = "ApiUnauthorizedError";
+	}
 }
 
 function friendlyDeleteAccountError(status: number, text: string): string {
@@ -780,6 +817,9 @@ export async function getLeaderboard(limit = 50, rank?: string): Promise<Leaderb
 		}
 		const msg = typeof body.error === "string" && body.error.trim() ? body.error.trim() : "Forbidden";
 		throw new Error(msg);
+	}
+	if (res.status === 401) {
+		throw new ApiUnauthorizedError("Your session expired. Please sign in again.");
 	}
 	if (!res.ok) throw new Error(await readApiErrorMessage(res, "Failed to load leaderboard"));
 	return res.json();

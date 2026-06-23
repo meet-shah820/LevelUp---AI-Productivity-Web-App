@@ -6,6 +6,7 @@ import {
 	getLeaderboard,
 	getLeaderboardWebSocketUrl,
 	LeaderboardRequiresGoogleError,
+	ApiUnauthorizedError,
 	type LeaderboardEntry,
 	type LeaderboardResponse,
 } from "../utils/api";
@@ -48,6 +49,7 @@ export default function Leaderboard() {
 	const [error, setError] = useState<string | null>(null);
 	/** Username/password (or other) sign-in without a linked Google account — API and live updates are withheld. */
 	const [googleAccountRequired, setGoogleAccountRequired] = useState(false);
+	const [sessionExpired, setSessionExpired] = useState(false);
 	const [live, setLive] = useState(false);
 	/** When null, the API defaults to the viewer's own rank bracket. */
 	const [selectedRank, setSelectedRank] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export default function Leaderboard() {
 		try {
 			setError(null);
 			setGoogleAccountRequired(false);
+			setSessionExpired(false);
 			const res = await getLeaderboard(50, selectedRank ?? undefined);
 			setData(res);
 		} catch (e) {
@@ -65,6 +68,10 @@ export default function Leaderboard() {
 				setGoogleAccountRequired(true);
 				setData(null);
 				setError(null);
+			} else if (e instanceof ApiUnauthorizedError) {
+				setSessionExpired(true);
+				setData(null);
+				setError(e.message);
 			} else {
 				setError("Failed to load leaderboard");
 			}
@@ -204,6 +211,26 @@ export default function Leaderboard() {
 				</p>
 			</motion.div>
 
+			{sessionExpired && (
+				<Card className="mb-8 p-6 md:p-8 border border-amber-500/25 bg-gradient-to-br from-[#111827]/90 to-[#1a1f35]/90">
+					<h2 className="text-lg font-semibold text-white mb-2">Session expired</h2>
+					<p className="text-white/60 text-sm mb-6 leading-relaxed max-w-xl">
+						{error || "Please sign in again to view the leaderboard."}
+					</p>
+					<Button
+						type="button"
+						className="w-full sm:w-auto min-w-[220px] bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-0"
+						onClick={() => {
+							localStorage.removeItem("auth_token");
+							setAuthReturnPath("/leaderboard");
+							window.location.href = "/auth";
+						}}
+					>
+						Sign in again
+					</Button>
+				</Card>
+			)}
+
 			{googleAccountRequired && (
 				<Card className="mb-8 p-6 md:p-8 border border-purple-500/25 bg-gradient-to-br from-[#111827]/90 to-[#1a1f35]/90">
 					<h2 className="text-lg font-semibold text-white mb-2">Connect Google to view the leaderboard</h2>
@@ -227,7 +254,7 @@ export default function Leaderboard() {
 				</Card>
 			)}
 
-			<div className={`flex flex-wrap gap-2 mb-6 ${googleAccountRequired ? "hidden" : ""}`}>
+			<div className={`flex flex-wrap gap-2 mb-6 ${googleAccountRequired || sessionExpired ? "hidden" : ""}`}>
 				{visibleRankTabs.map((r) => (
 					<Button
 						key={r}
@@ -246,7 +273,7 @@ export default function Leaderboard() {
 				))}
 			</div>
 
-			{!googleAccountRequired && data && !data.viewerInBracket && data.viewerHunterRank && (
+			{!googleAccountRequired && !sessionExpired && data && !data.viewerInBracket && data.viewerHunterRank && (
 				<Card className="mb-4 p-3 border border-amber-500/20 bg-amber-500/5 text-sm text-amber-100/95">
 					Your Hunter rank is <span className="font-semibold text-white">{data.viewerHunterRank}</span>. This tab
 					shows rank <span className="font-semibold text-white">{data.rankBracket}</span> only — open Rank{" "}
@@ -254,7 +281,7 @@ export default function Leaderboard() {
 				</Card>
 			)}
 
-			{!googleAccountRequired && data?.yourRank && (
+			{!googleAccountRequired && !sessionExpired && data?.yourRank && (
 				<Card className="mb-6 p-4 border border-indigo-500/25 bg-indigo-500/5">
 					<p className="text-xs uppercase tracking-wider text-indigo-300/80 mb-1">
 						Your standing · Rank {data.rankBracket}
@@ -289,14 +316,14 @@ export default function Leaderboard() {
 				</Card>
 			)}
 
-			{loading && !data && !googleAccountRequired && (
+			{loading && !data && !googleAccountRequired && !sessionExpired && (
 				<p className="text-white/50" role="status">
 					Loading rankings…
 				</p>
 			)}
-			{error && <p className="text-red-400">{error}</p>}
+			{error && !sessionExpired && <p className="text-red-400">{error}</p>}
 
-			{!googleAccountRequired && data && (
+			{!googleAccountRequired && !sessionExpired && data && (
 				<Card className="border border-purple-500/20 bg-[#0f1424]/80 overflow-hidden">
 					<div className="flex gap-2 md:gap-3 px-3 py-2.5 text-xs font-medium text-white/40 border-b border-white/10 items-center">
 						<span className="w-7 md:w-9 shrink-0">#</span>
