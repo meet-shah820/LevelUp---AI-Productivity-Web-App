@@ -55,7 +55,13 @@ type EdgePlacement = {
 	maxHeightPx: number;
 };
 
-type TutorialPlacement = SlotPlacement | EdgePlacement;
+type AboveDialogPlacement = {
+	mode: "above-dialog";
+	wrapperStyle: CSSProperties;
+	maxHeightPx: number;
+};
+
+type TutorialPlacement = SlotPlacement | EdgePlacement | AboveDialogPlacement;
 
 function inflateRect(rect: DOMRect, pad: number): DOMRect {
 	return new DOMRect(rect.left - pad, rect.top - pad, rect.width + pad * 2, rect.height + pad * 2);
@@ -197,6 +203,32 @@ function isProgramDialogVisible(): boolean {
 	return r.width > 8 && r.height > 8;
 }
 
+/** Pin the tutorial strip directly above the program dialog (mobile / fallback). */
+function computeAboveDialogPlacement(dlg: DOMRect, panelW: number, panelH: number): AboveDialogPlacement {
+	const vw = window.innerWidth;
+	const minTop = APP_HEADER_HEIGHT + EDGE;
+	const width = Math.min(panelW, dlg.width + 16, vw - EDGE * 2);
+	const left = Math.max(EDGE, dlg.left + (dlg.width - width) / 2);
+	const maxHeightPx = Math.max(64, Math.min(panelH, dlg.top - GAP - minTop));
+	const top = Math.max(minTop, dlg.top - GAP - maxHeightPx);
+
+	return {
+		mode: "above-dialog",
+		wrapperStyle: {
+			position: "fixed",
+			zIndex: 60,
+			pointerEvents: "none",
+			top,
+			left,
+			width,
+			display: "flex",
+			flexDirection: "column",
+			alignItems: "stretch",
+		},
+		maxHeightPx,
+	};
+}
+
 function computePlacement(
 	step: TutorialStepDef,
 	spotlightRect: DOMRect | null,
@@ -210,12 +242,18 @@ function computePlacement(
 	const dlgEl = document.querySelector(PROGRAM_DIALOG_SELECTOR);
 	const mainEl = document.querySelector(PAGE_MAIN_SELECTOR);
 	const dlgVisible = isProgramDialogVisible();
+	const programDialogOpen = dlgVisible;
 
-	const programDialogOpen = step.kind === "goal_created" && dlgVisible;
-
-	if (programDialogOpen && mainEl instanceof HTMLElement && dlgEl instanceof HTMLElement && vw >= 768) {
-		const slot = computeDesktopSlot(mainEl.getBoundingClientRect(), dlgEl.getBoundingClientRect());
-		if (slot) return slot;
+	if (programDialogOpen && dlgEl instanceof HTMLElement) {
+		const dlgRect = dlgEl.getBoundingClientRect();
+		if (vw < 768) {
+			return computeAboveDialogPlacement(dlgRect, panelW, panelH);
+		}
+		if (mainEl instanceof HTMLElement) {
+			const slot = computeDesktopSlot(mainEl.getBoundingClientRect(), dlgRect);
+			if (slot) return slot;
+		}
+		return computeAboveDialogPlacement(dlgRect, panelW, panelH);
 	}
 
 	const includeSpotlight = !programDialogOpen;
@@ -264,7 +302,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 			const vw = window.innerWidth;
 			const panelW = panelEl?.offsetWidth || panelWidth(vw);
 			const panelH = panelEl?.offsetHeight || 220;
-			setProgramDialogOpen(active && step.kind === "goal_created" && isProgramDialogVisible());
+			setProgramDialogOpen(active && isProgramDialogVisible());
 			setPlacement(computePlacement(step, spotlightRect, panelW, panelH));
 		};
 
@@ -292,8 +330,10 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 
 	const wrongPage = step.path && location.pathname !== step.path;
 
-	const showNext = step.kind === "next";
-	const nextDisabled = wrongPage;
+	const awaitingProgramCreation =
+		programDialogOpen || (step.kind === "goal_created" && !wrongPage);
+	const showNext = step.kind === "next" && !awaitingProgramCreation;
+	const nextDisabled = wrongPage || programDialogOpen;
 
 	const hint = useMemo(() => {
 		if (!wrongPage) return null;
@@ -314,18 +354,24 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 	let wrapOuterClass = bottomWrapClass;
 	let wrapOuterStyle: CSSProperties | undefined;
 
-	if (placement.mode === "slot") {
-		wrapOuterClass = `pointer-events-none flex min-h-0 overflow-x-hidden ${placement.justify}`;
+	if (placement.mode === "slot" || placement.mode === "above-dialog") {
+		wrapOuterClass = `pointer-events-none flex min-h-0 overflow-x-hidden${
+			placement.mode === "slot" ? ` ${placement.justify}` : ""
+		}`;
 		wrapOuterStyle = placement.wrapperStyle;
 	} else if (placement.edge === "top") {
 		wrapOuterClass = topWrapClass;
 	}
 
 	const panelStyle: CSSProperties | undefined =
-		placement.mode === "edge" ? { maxHeight: `${placement.maxHeightPx}px` } : { maxHeight: "100%" };
+		placement.mode === "edge" || placement.mode === "above-dialog"
+			? { maxHeight: `${placement.maxHeightPx}px` }
+			: { maxHeight: "100%" };
 
 	const wrapPanelClass =
-		placement.mode === "slot" ? `${panelClassName} shrink-0 max-w-full` : panelClassName;
+		placement.mode === "slot" || placement.mode === "above-dialog"
+			? `${panelClassName} shrink-0 max-w-full`
+			: panelClassName;
 
 	return (
 		<>
@@ -387,7 +433,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 							</Button>
 						) : (
 							<p className="text-xs text-white/45 sm:text-right flex-1">
-								{step.kind === "goal_created"
+								{step.kind === "goal_created" || programDialogOpen
 									? "Waiting for you to create a program…"
 									: "Waiting for a quest completion…"}
 							</p>
