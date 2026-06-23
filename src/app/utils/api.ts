@@ -1,5 +1,10 @@
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
+/** Base URL for browser fetches to the Express API (empty = same origin, e.g. Vite dev proxy). */
+export function getPublicApiBase(): string {
+	return API_BASE.replace(/\/$/, "");
+}
+
 import { readSiteAdminBypassActive, SITE_ADMIN_PREVIEW_SECRET } from "./siteAdminBypass";
 import { readPendingReferralCode, clearPendingReferralCode } from "./referralStorage";
 

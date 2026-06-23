@@ -20,6 +20,7 @@ import leaderboardRouter from "./routes/leaderboard.js";
 import weeklyReportRouter from "./routes/weeklyReport.js";
 import fitnessLibraryRouter from "./routes/fitnessLibrary.js";
 import referralsRouter from "./routes/referrals.js";
+import publicConfigRouter from "./routes/publicConfig.js";
 import "./jobs/cron.js";
 import "./jobs/penalties.js";
 import { attachUser, requireAuth } from "./middleware/auth.js";
@@ -64,6 +65,8 @@ mongoose
 app.get("/api/health", (_req, res) => {
 	res.json({ ok: true });
 });
+
+app.use("/api/public-config", publicConfigRouter);
 
 // Basic root route (useful for Render/health checks and manual verification)
 app.get("/", (_req, res) => {

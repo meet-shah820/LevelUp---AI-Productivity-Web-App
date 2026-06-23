@@ -28,10 +28,10 @@ export function CookieConsentBanner() {
 	const choose = (choice: CookieConsentChoice) => {
 		if (choice === "accepted") {
 			grantAnalyticsConsent();
-			applyAnalyticsConsent();
+			void applyAnalyticsConsent();
 		} else {
 			revokeAnalyticsConsent();
-			applyAnalyticsConsent();
+			void applyAnalyticsConsent();
 		}
 		setVisible(false);
 	};

@@ -1,24 +1,60 @@
 import posthog from "posthog-js";
+import { getPublicApiBase } from "../utils/api";
 import { hasAnalyticsConsent } from "./cookieConsent";
 
-const POSTHOG_KEY =
+const BUILD_TIME_KEY =
 	(typeof import.meta !== "undefined" && (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_POSTHOG_KEY) ||
 	"";
-const POSTHOG_HOST =
+const BUILD_TIME_HOST =
 	(typeof import.meta !== "undefined" && (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_POSTHOG_HOST) ||
 	"https://us.i.posthog.com";
 
+let resolvedKey = BUILD_TIME_KEY.trim();
+let resolvedHost = BUILD_TIME_HOST.replace(/\/$/, "") || "https://us.i.posthog.com";
 let initialized = false;
+let configReady = Boolean(resolvedKey);
+let configPromise: Promise<void> | null = null;
+
+async function fetchRuntimeConfig(): Promise<void> {
+	if (resolvedKey) {
+		configReady = true;
+		return;
+	}
+	try {
+		const base = getPublicApiBase();
+		const res = await fetch(`${base}/api/public-config`, { credentials: "omit" });
+		if (!res.ok) return;
+		const data = (await res.json()) as { posthogKey?: string | null; posthogHost?: string };
+		const key = typeof data.posthogKey === "string" ? data.posthogKey.trim() : "";
+		const host = typeof data.posthogHost === "string" ? data.posthogHost.trim().replace(/\/$/, "") : "";
+		if (key) resolvedKey = key;
+		if (host) resolvedHost = host;
+	} catch {
+		/* API unreachable — analytics stays disabled */
+	}
+	configReady = Boolean(resolvedKey);
+}
+
+/** Resolve PostHog key from Vite env or `/api/public-config` (for production builds missing VITE_* at build time). */
+export function ensurePostHogConfig(): Promise<void> {
+	if (configReady) return Promise.resolve();
+	if (!configPromise) {
+		configPromise = fetchRuntimeConfig().finally(() => {
+			configPromise = null;
+		});
+	}
+	return configPromise;
+}
 
 export function isPostHogEnabled(): boolean {
-	return Boolean(POSTHOG_KEY.trim());
+	return Boolean(resolvedKey);
 }
 
 export function initPostHog(): void {
 	if (initialized || typeof window === "undefined" || !isPostHogEnabled() || !hasAnalyticsConsent()) return;
 
-	posthog.init(POSTHOG_KEY.trim(), {
-		api_host: POSTHOG_HOST.replace(/\/$/, ""),
+	posthog.init(resolvedKey, {
+		api_host: resolvedHost,
 		person_profiles: "identified_only",
 		capture_pageview: false,
 		capture_pageleave: true,
@@ -34,8 +70,10 @@ export function initPostHog(): void {
 }
 
 /** Apply stored consent — init PostHog or opt out after a preference change. */
-export function applyAnalyticsConsent(): void {
-	if (typeof window === "undefined" || !isPostHogEnabled()) return;
+export async function applyAnalyticsConsent(): Promise<void> {
+	if (typeof window === "undefined") return;
+	await ensurePostHogConfig();
+	if (!isPostHogEnabled()) return;
 
 	if (hasAnalyticsConsent()) {
 		if (!initialized) {

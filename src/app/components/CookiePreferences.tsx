@@ -25,14 +25,14 @@ export function CookiePreferences() {
 
 	function enableAnalytics() {
 		grantAnalyticsConsent();
-		applyAnalyticsConsent();
+		void applyAnalyticsConsent();
 		setChoice("accepted");
 		toast.success("Analytics enabled");
 	}
 
 	function disableAnalytics() {
 		revokeAnalyticsConsent();
-		applyAnalyticsConsent();
+		void applyAnalyticsConsent();
 		setChoice("essential");
 		toast.message("Analytics disabled — essential cookies only");
 	}

@@ -1,27 +1,29 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { CookieConsentBanner } from "../components/CookieConsentBanner";
 import { getBillingStatus, getProfile, BILLING_UPDATED_EVENT, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
 import { COOKIE_CONSENT_UPDATED_EVENT, hasAnalyticsConsent } from "./cookieConsent";
-import { applyAnalyticsConsent, capturePageView, identifyUser, isPostHogEnabled } from "./posthog";
+import { applyAnalyticsConsent, capturePageView, ensurePostHogConfig, identifyUser, isPostHogEnabled } from "./posthog";
 
-function PostHogPageTracker() {
+function PostHogPageTracker({ enabled }: { enabled: boolean }) {
 	const location = useLocation();
 
 	useEffect(() => {
-		if (!isPostHogEnabled() || !hasAnalyticsConsent()) return;
+		if (!enabled || !isPostHogEnabled() || !hasAnalyticsConsent()) return;
 		capturePageView(`${location.pathname}${location.search}`);
-	}, [location.pathname, location.search]);
+	}, [enabled, location.pathname, location.search]);
 
 	return null;
 }
 
-function PostHogUserSync() {
+function PostHogUserSync({ enabled }: { enabled: boolean }) {
 	useEffect(() => {
+		if (!enabled) return;
 		let cancelled = false;
 
 		async function sync() {
-			if (!isPostHogEnabled() || !hasAnalyticsConsent()) return;
+			await ensurePostHogConfig();
+			if (cancelled || !isPostHogEnabled() || !hasAnalyticsConsent()) return;
 			const token = localStorage.getItem("auth_token");
 			if (!token) return;
 
@@ -61,25 +63,38 @@ function PostHogUserSync() {
 			window.removeEventListener(RANK_UPDATED_EVENT, refresh);
 			window.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, refresh);
 		};
-	}, []);
+	}, [enabled]);
 
 	return null;
 }
 
 /** Root route wrapper: consent banner, pageviews, and user traits when analytics is allowed. */
 export function PostHogRouteShell() {
+	const [analyticsReady, setAnalyticsReady] = useState(false);
+
 	useEffect(() => {
-		applyAnalyticsConsent();
-		const onConsent = () => applyAnalyticsConsent();
+		let cancelled = false;
+		void ensurePostHogConfig().then(() => {
+			if (cancelled) return;
+			void applyAnalyticsConsent();
+			setAnalyticsReady(true);
+		});
+
+		const onConsent = () => {
+			void applyAnalyticsConsent();
+		};
 		window.addEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
-		return () => window.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
+		return () => {
+			cancelled = true;
+			window.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
+		};
 	}, []);
 
 	return (
 		<>
 			<CookieConsentBanner />
-			<PostHogPageTracker />
-			<PostHogUserSync />
+			<PostHogPageTracker enabled={analyticsReady} />
+			<PostHogUserSync enabled={analyticsReady} />
 			<Outlet />
 		</>
 	);
