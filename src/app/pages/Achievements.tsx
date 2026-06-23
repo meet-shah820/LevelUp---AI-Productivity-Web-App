@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { Lock, Check, Trophy } from "lucide-react";
+import { AchievementShareMenu } from "../components/AchievementShareMenu";
 import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { getAchievements, RANK_UPDATED_EVENT } from "../utils/api";
@@ -217,8 +218,11 @@ export default function Achievements() {
                       <Trophy className={`w-5 h-5 ${achievement.unlocked ? "text-yellow-300" : "text-gray-500"}`} />
                     </div>
                     {achievement.unlocked ? (
-                      <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50">
-                        <Check className="w-5 h-5 text-white" />
+                      <div className="flex items-center gap-1">
+                        <AchievementShareMenu achievement={achievement} variant="compact" />
+                        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50">
+                          <Check className="w-5 h-5 text-white" />
+                        </div>
                       </div>
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">

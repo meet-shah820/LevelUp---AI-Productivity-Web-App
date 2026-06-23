@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { Edit2, Award, Target, Clock, TrendingUp, Swords, Brain, Shield, Zap, Flame } from "lucide-react";
 import { Card } from "../components/ui/card";
@@ -19,8 +20,10 @@ import { Label } from "../components/ui/label";
 import { getProfile, getRecentHistory, patchProfile, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import { AchievementShareMenu } from "../components/AchievementShareMenu";
 
 export default function Profile() {
+  const navigate = useNavigate();
   const { effectiveTier } = useEffectiveTier();
   const [data, setData] = useState<any>(null);
   const [recentItems, setRecentItems] = useState<
@@ -135,7 +138,12 @@ export default function Profile() {
     { name: "Vitality", value: data?.user?.stats?.vitality ?? 0, max: 100, icon: Zap, color: "from-green-500 to-emerald-500" },
   ];
 
-  const achievements = (data?.recentAchievements || []).map((a: any) => ({ id: a.id, name: a.name, unlocked: true }));
+  const achievements = (data?.recentAchievements || []).map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    rarity: a.rarity,
+    unlocked: true,
+  }));
 
   const recentActivity = recentItems.map((it) => ({
     id: it.id,
@@ -321,7 +329,12 @@ export default function Profile() {
             <Card className="bg-[#111827] border-purple-500/20 p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-white">Recent Achievements</h3>
-                <Button variant="ghost" size="sm" className="text-indigo-400 hover:text-indigo-300">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-indigo-400 hover:text-indigo-300"
+                  onClick={() => navigate("/achievements")}
+                >
                   View All
                 </Button>
               </div>
@@ -332,10 +345,13 @@ export default function Profile() {
                   {achievements.map((achievement: any) => (
                     <div
                       key={achievement.id}
-                      className="aspect-square rounded-xl border-2 flex items-center justify-center text-xs text-white transition-all bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30 shadow-lg shadow-yellow-500/20"
+                      className="relative aspect-square rounded-xl border-2 flex flex-col items-center justify-center text-xs text-white transition-all bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30 shadow-lg shadow-yellow-500/20 p-2"
                       title={achievement.name}
                     >
-                      <span className="px-2 text-center">{achievement.name}</span>
+                      <div className="absolute top-1 right-1">
+                        <AchievementShareMenu achievement={achievement} variant="compact" />
+                      </div>
+                      <span className="px-1 text-center leading-tight">{achievement.name}</span>
                     </div>
                   ))}
                 </div>

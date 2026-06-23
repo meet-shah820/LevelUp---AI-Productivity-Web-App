@@ -14,6 +14,7 @@ const HistorySchema = new mongoose.Schema(
 				"timeframe_bonus",
 				"penalty_missed_day",
 				"penalty_timeframe_miss",
+				"referral_bonus",
 			],
 			required: true,
 		},

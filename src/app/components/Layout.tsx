@@ -16,6 +16,7 @@ import {
   Calendar,
   ListOrdered,
   CreditCard,
+  Gift,
 } from "lucide-react";
 import { TutorialHelpButton } from "../tutorial/TutorialHelpButton";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -164,6 +165,7 @@ export function Layout() {
       ...(t >= 2 ? [{ name: "Analytics", href: "/analytics", icon: BarChart3 }] : []),
       { name: "Streak", href: "/streak", icon: Calendar },
       { name: "Leaderboard", href: "/leaderboard", icon: ListOrdered },
+      { name: "Invite Friends", href: "/referrals", icon: Gift },
       { name: "Profile", href: "/profile", icon: User },
       { name: "Pricing", href: "/pricing", icon: CreditCard },
       { name: "Settings", href: "/settings", icon: Settings },

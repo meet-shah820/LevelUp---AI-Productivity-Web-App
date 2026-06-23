@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import { PostHogRouteShell } from "./analytics/PostHogProvider";
 import { Layout } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Quests from "./pages/Quests";
@@ -17,6 +18,7 @@ import RefundPolicy from "./pages/legal/RefundPolicy";
 import { ProtectedLayout } from "./components/ProtectedLayout";
 import Streak from "./pages/Streak";
 import Leaderboard from "./pages/Leaderboard";
+import Referrals from "./pages/Referrals";
 import { TierProtectedRoute } from "./components/TierProtectedRoute";
 
 function RedirectToPrivacy() {
@@ -35,6 +37,9 @@ function RedirectSkillsToAchievements() {
 }
 
 export const router = createBrowserRouter([
+  {
+    element: <PostHogRouteShell />,
+    children: [
   {
     path: "/auth",
     Component: Auth
@@ -68,12 +73,15 @@ export const router = createBrowserRouter([
           ) },
           { path: "streak", Component: Streak },
           { path: "leaderboard", Component: Leaderboard },
+          { path: "referrals", Component: Referrals },
           { path: "profile", Component: Profile },
           { path: "achievements", Component: Achievements },
           { path: "pricing", Component: Pricing },
           { path: "settings", Component: Settings },
         ],
       },
+    ],
+  },
     ],
   },
 ]);

@@ -5,10 +5,12 @@ import User from "../models/User.js";
 import Goal from "../models/Goal.js";
 import Quest from "../models/Quest.js";
 import History from "../models/History.js";
+import Referral from "../models/Referral.js";
 import AchievementUnlock from "../models/AchievementUnlock.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getStripe } from "../services/stripeClient.js";
 import { cancelStripeBillingForUser } from "../services/stripeAccountCleanup.js";
+import { applyReferralOnSignup, normalizeReferralCode } from "../services/referralEngine.js";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
@@ -72,7 +74,7 @@ router.get("/oauth-health", (req, res) => {
 
 router.post("/signup", async (req, res) => {
 	try {
-		const { username, password } = req.body || {};
+		const { username, password, referralCode } = req.body || {};
 		if (typeof username !== "string" || typeof password !== "string") {
 			return res.status(400).json({ error: "username and password required" });
 		}
@@ -82,6 +84,15 @@ router.post("/signup", async (req, res) => {
 		if (existing) return res.status(409).json({ error: "username taken" });
 		const hashed = await bcrypt.hash(password, 10);
 		const user = await User.create({ username: name, password: hashed });
+		const refCode = normalizeReferralCode(referralCode);
+		if (refCode) {
+			try {
+				await applyReferralOnSignup(user, refCode);
+			} catch (refErr) {
+				// eslint-disable-next-line no-console
+				console.warn("[auth] referral on signup failed", refErr);
+			}
+		}
 		const token = makeJwt(user);
 		return res.json({ token });
 	} catch (e) {
@@ -193,6 +204,7 @@ router.get("/google/callback", async (req, res) => {
 		if (!googleId) return res.status(500).send("Missing Google sub");
 
 		// Find or create user
+		let isNewUser = false;
 		let user = await User.findOne({ googleId });
 		if (!user && email) {
 			user = await User.findOne({ email });
@@ -212,12 +224,14 @@ router.get("/google/callback", async (req, res) => {
 				email,
 				displayName,
 			});
+			isNewUser = true;
 		}
 
 		const jwtToken = makeJwt(user);
 		const redirectUrl = new URL(successRedirect);
 		redirectUrl.searchParams.set("token", jwtToken);
 		redirectUrl.searchParams.set("username", user.username);
+		redirectUrl.searchParams.set("isNew", isNewUser ? "1" : "0");
 		return res.redirect(redirectUrl.toString());
 	} catch (e) {
 		// eslint-disable-next-line no-console
@@ -247,6 +261,7 @@ export async function deleteAccountAndData(req, res) {
 		await Goal.deleteMany({ userId });
 		await History.deleteMany({ userId });
 		await AchievementUnlock.deleteMany({ userId });
+		await Referral.deleteMany({ $or: [{ referrerId: userId }, { refereeId: userId }] });
 		await User.findByIdAndDelete(userId);
 
 		return res.json({ ok: true });

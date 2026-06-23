@@ -31,6 +31,7 @@ import {
   RANK_UPDATED_EVENT,
   type WeeklyReportShown,
 } from "../utils/api";
+import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
 import { WeeklyReportModal } from "../components/WeeklyReportModal";
 import { readOnboarding } from "../tutorial/tutorialStorage";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
@@ -299,8 +300,15 @@ export default function Dashboard() {
   }, [data]);
 
   async function handleComplete(questId: string) {
+    const quest = dailyQuests.find((q) => q.id === questId);
     try {
       const resp = await completeQuest(questId);
+      trackQuestCompleted({
+        source: "dashboard",
+        difficulty: quest?.statType,
+        xp: quest?.xp,
+        leveledUp: Boolean((resp as { leveledUp?: boolean })?.leveledUp),
+      });
       if (resp.leveledUp) {
         setLeveledUp(true);
         setTimeout(() => setLeveledUp(false), 1800);
@@ -323,6 +331,7 @@ export default function Dashboard() {
   async function handleUndo(questId: string) {
     try {
       await revertQuest(questId);
+      trackQuestReverted("dashboard");
       const fresh = await getDashboard();
       setData(fresh);
       // Refresh header XP + notifications (Layout listens to this event)

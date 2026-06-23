@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getGoals, getProfile } from "../utils/api";
+import { trackTutorialCompleted, trackTutorialSkipped } from "../analytics/posthog";
 import { ONBOARDING_GOAL_CREATED, ONBOARDING_QUEST_COMPLETED } from "./tutorialEvents";
 import { readOnboarding, writeOnboarding, type OnboardingPersisted } from "./tutorialStorage";
 import { getTutorialSteps, TUTORIAL_STEPS, type TutorialMode, type TutorialStepDef } from "./tutorialSteps";
@@ -58,6 +59,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const finishCompleted = useCallback(() => {
 		if (mode === "onboarding") {
 			persistPatch({ completed: true, skipped: false, started: true, stepIndex: stepCount });
+			trackTutorialCompleted();
 		}
 		setActive(false);
 	}, [mode, stepCount]);
@@ -65,6 +67,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const skipTour = useCallback(() => {
 		if (mode === "onboarding") {
 			persistPatch({ skipped: true, completed: false, started: true, stepIndex });
+			trackTutorialSkipped(stepIndex);
 		}
 		setActive(false);
 	}, [mode, stepIndex]);

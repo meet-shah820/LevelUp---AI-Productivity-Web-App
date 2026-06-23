@@ -13,6 +13,7 @@ import { scheduleLeaderboardBroadcast } from "../services/leaderboardHub.js";
 import { generateQuestDetails } from "../services/gemini.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
 import { resolvePenaltyForQuest } from "../utils/questPenalty.js";
+import { processReferralMilestone } from "../services/referralEngine.js";
 import {
 	mapQuestDifficulty,
 	mapQuestToClientResponse,
@@ -667,6 +668,14 @@ router.patch("/:id/complete", async (req, res) => {
 
 		const goals = await Goal.find({ userId: user._id, status: "active" }).lean();
 		const questsCompleted = await History.countDocuments({ userId: user._id, type: "quest_complete", xpChange: { $gt: 0 } });
+		if (questsCompleted === 1) {
+			try {
+				await processReferralMilestone(user._id, "first_quest");
+			} catch (refErr) {
+				// eslint-disable-next-line no-console
+				console.warn("[quests] referral first_quest failed", refErr);
+			}
+		}
 		const focusXp = await History.aggregate([
 			{ $match: { userId: user._id, type: "focus_session" } },
 			{ $group: { _id: null, total: { $sum: "$xpChange" } } },

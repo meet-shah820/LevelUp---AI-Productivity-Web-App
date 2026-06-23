@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
 import { Card } from "../components/ui/card";
@@ -7,6 +7,13 @@ import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";
 import { consumeAuthReturnPath, rememberAuthReturnPathFromSearch } from "../utils/authRedirect";
+import {
+	trackGoogleAuthStarted,
+	trackReferralCodeCaptured,
+	trackUserLoggedIn,
+	trackUserSignedUp,
+} from "../analytics/posthog";
+import { captureReferralFromSearchParams, clearPendingReferralCode, readPendingReferralCode } from "../utils/referralStorage";
 
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
@@ -31,9 +38,15 @@ async function postJson(path: string, body?: unknown) {
 
 export default function Auth() {
 	const [searchParams] = useSearchParams();
+	const pendingReferralCode = useMemo(() => readPendingReferralCode(), [searchParams]);
 
 	useEffect(() => {
 		rememberAuthReturnPathFromSearch(searchParams);
+		const ref = searchParams.get("ref") || searchParams.get("referral");
+		if (ref) {
+			captureReferralFromSearchParams(searchParams);
+			trackReferralCodeCaptured();
+		}
 	}, [searchParams]);
 
 	const [mode, setMode] = useState<"login" | "signup">("login");
@@ -66,6 +79,13 @@ export default function Auth() {
 	const finishAuth = (token: string, nameForStorage: string) => {
 		localStorage.setItem("auth_token", token);
 		localStorage.setItem("last_username", nameForStorage);
+		const hadReferral = Boolean(readPendingReferralCode());
+		if (mode === "signup") {
+			trackUserSignedUp("email", hadReferral);
+			clearPendingReferralCode();
+		} else {
+			trackUserLoggedIn("email");
+		}
 		const next = consumeAuthReturnPath() || "/";
 		window.location.href = next;
 	};
@@ -80,7 +100,10 @@ export default function Auth() {
 		setLoading(true);
 		setError(null);
 		try {
-			const res = (await postJson(`/api/auth/${mode}`, { username, password })) as { token?: string };
+			const pendingRef = readPendingReferralCode();
+			const body: Record<string, string> = { username, password };
+			if (mode === "signup" && pendingRef) body.referralCode = pendingRef;
+			const res = (await postJson(`/api/auth/${mode}`, body)) as { token?: string };
 			if (!res.token) throw new Error("Missing token");
 			finishAuth(res.token, username.trim());
 		} catch (err) {
@@ -98,6 +121,11 @@ export default function Auth() {
 				<Card className="bg-gradient-to-br from-[#111827] to-[#1F2937] border-purple-500/30 p-8">
 					<h1 className="text-2xl font-bold text-white mb-2 text-center">LevelUp</h1>
 					<p className="text-gray-400 text-center mb-6">Log training, complete quests, level your hunter rank</p>
+					{pendingReferralCode ? (
+						<p className="text-center text-sm text-indigo-300 bg-indigo-500/10 border border-indigo-500/25 rounded-lg px-3 py-2 mb-4">
+							Invite code <span className="font-mono font-semibold">{pendingReferralCode}</span> — bonus XP when you sign up
+						</p>
+					) : null}
 					<div className="flex justify-center gap-2 mb-6">
 						<Button variant={mode === "login" ? "default" : "outline"} className={mode === "login" ? "bg-gradient-to-r from-indigo-500 to-purple-500" : "border-purple-500/30 text-white hover:bg-white/5"} onClick={() => setAuthMode("login")}>
 							Login
@@ -176,6 +204,7 @@ export default function Auth() {
 							className="w-full border-purple-500/30 text-white hover:bg-white/5"
 							onClick={() => {
 								if (!requireSignupConsents()) return;
+								trackGoogleAuthStarted(mode);
 								window.location.href = googleStartUrl;
 							}}
 						>

@@ -14,6 +14,11 @@ import {
 	type BillingPlanTier,
 	type BillingTierId,
 } from "../utils/api";
+import {
+	trackCheckoutCanceled,
+	trackCheckoutStarted,
+	trackSubscriptionCompleted,
+} from "../analytics/posthog";
 import { toast } from "sonner";
 import { setAuthReturnPath } from "../utils/authRedirect";
 
@@ -81,6 +86,7 @@ export default function Pricing() {
 				try {
 					const st = await getBillingStatus();
 					setCurrentTier(st.tier);
+					trackSubscriptionCompleted(st.tier);
 					window.dispatchEvent(new CustomEvent(BILLING_UPDATED_EVENT));
 				} catch {
 					/* not signed in */
@@ -90,6 +96,7 @@ export default function Pricing() {
 			setSearchParams(searchParams, { replace: true });
 		} else if (c === "canceled") {
 			toast.message("Checkout canceled.");
+			trackCheckoutCanceled();
 			searchParams.delete("checkout");
 			setSearchParams(searchParams, { replace: true });
 		}
@@ -113,6 +120,7 @@ export default function Pricing() {
 		}
 		setLoadingTier(tierId);
 		try {
+			trackCheckoutStarted(tierId);
 			const { url } = await createBillingCheckoutSession(tierId);
 			window.location.href = url;
 		} catch (e) {

@@ -12,6 +12,7 @@ import {
 } from "../services/gemini.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
 import { buildStoredPenaltyForQuest } from "../utils/questPenalty.js";
+import { processReferralMilestone } from "../services/referralEngine.js";
 import { calculateLevelFromXp } from "../utils/level.js";
 import History from "../models/History.js";
 import { evaluateAndRecordAchievements } from "../services/achievementsEngine.js";
@@ -973,6 +974,12 @@ router.post("/", async (req, res) => {
 					xpChange: ONBOARDING_FIRST_PROGRAM_XP,
 					meta: { title: "Onboarding quest: first training program" },
 				});
+			}
+			try {
+				await processReferralMilestone(user._id, "first_program");
+			} catch (refErr) {
+				// eslint-disable-next-line no-console
+				console.warn("[goals] referral first_program failed", refErr);
 			}
 		}
 

@@ -62,12 +62,19 @@ const UserSchema = new mongoose.Schema(
 			/** True when subscription is set to cancel at period end (still active until then) */
 			cancelAtPeriodEnd: { type: Boolean, default: false },
 		},
+		/** Unique invite code for the referral program */
+		referralCode: { type: String, default: "" },
+		/** User who referred this account */
+		referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+		/** Total XP earned from referring others */
+		referralXpEarned: { type: Number, default: 0 },
 	},
 	{ timestamps: true }
 );
 
 /** Unique only when `googleId` is a real string; many users omit the field (password sign-up). */
 UserSchema.index({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: "string" } } });
+UserSchema.index({ referralCode: 1 }, { unique: true, partialFilterExpression: { referralCode: { $type: "string", $gt: "" } } });
 
 export default mongoose.model("User", UserSchema);
 

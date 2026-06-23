@@ -48,6 +48,7 @@ import {
 import { toast } from "sonner";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import { trackGoalCreated } from "../analytics/posthog";
 import { ONBOARDING_GOAL_CREATED } from "../tutorial/tutorialEvents";
 import { useEffect } from "react";
 
@@ -270,6 +271,7 @@ export default function Goals() {
           deadline: formData.deadline.trim() || undefined,
           userProfile: formData.userProfile,
         });
+        trackGoalCreated({ category: formData.category, rarity: formData.rarity });
         const res = await getGoals();
         setGoals(mapServerGoals(res.goals));
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));

@@ -17,6 +17,7 @@ import {
   type GoalProgramModule,
 } from "../utils/api";
 import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
+import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
@@ -607,7 +608,16 @@ export default function Quests() {
     setQuests(quests.map((q) => (q.id === questId ? { ...q, completed: true } : q)));
     if (questId && questId.length >= 12) {
       try {
-        await completeQuest(questId, timerActiveSeconds ? { timerActiveSeconds } : undefined);
+        const resp = await completeQuest(questId, timerActiveSeconds ? { timerActiveSeconds } : undefined);
+        trackQuestCompleted({
+          source: "quests",
+          timeframe: questRow?.timeframe,
+          difficulty: questRow?.difficulty,
+          xp: questRow?.xp,
+          questTag: questRow?.questTag,
+          leveledUp: Boolean((resp as { leveledUp?: boolean })?.leveledUp),
+          timerUsed: timerActiveSeconds > 0,
+        });
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
         window.dispatchEvent(new CustomEvent(ONBOARDING_QUEST_COMPLETED));
       } catch {
@@ -621,6 +631,7 @@ export default function Quests() {
     if (questId && questId.length >= 12) {
       try {
         await revertQuest(questId);
+        trackQuestReverted("quests");
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
       } catch {
         await loadGoalsAndQuests();

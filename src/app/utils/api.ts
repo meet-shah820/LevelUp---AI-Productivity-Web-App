@@ -1,6 +1,7 @@
 const API_BASE = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
 import { readSiteAdminBypassActive, SITE_ADMIN_PREVIEW_SECRET } from "./siteAdminBypass";
+import { readPendingReferralCode, clearPendingReferralCode } from "./referralStorage";
 
 function apiUrl(path: string): string {
 	return `${API_BASE}${path}`;
@@ -280,6 +281,50 @@ export async function getAchievements() {
 	const res = await apiFetch("/api/achievements");
 	if (!res.ok) throw new Error("Failed to load achievements");
 	return res.json();
+}
+
+export type ReferralStatsResponse = {
+	code: string;
+	link: string;
+	stats: {
+		totalInvited: number;
+		activated: number;
+		xpEarned: number;
+		recent: { username: string; displayName?: string; milestone: string; xpAwarded: number; at: string }[];
+	};
+	milestones: { key: string; label: string; referrerXp: number; refereeXp: number }[];
+	referredBy: string | null;
+};
+
+export async function getReferrals(): Promise<ReferralStatsResponse> {
+	const res = await apiFetch("/api/referrals");
+	if (!res.ok) throw new Error("Failed to load referrals");
+	return res.json();
+}
+
+export async function claimReferralCode(code: string) {
+	const res = await apiFetch("/api/referrals/claim", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ code }),
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error((body as { error?: string }).error || "Failed to apply referral code");
+	return body;
+}
+
+export async function tryClaimPendingReferral() {
+	const code = readPendingReferralCode();
+	if (!code) return;
+	try {
+		await claimReferralCode(code);
+		clearPendingReferralCode();
+		if (typeof window !== "undefined") {
+			window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+		}
+	} catch {
+		/* invalid or already referred */
+	}
 }
 
 export async function getAnalytics() {

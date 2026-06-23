@@ -19,6 +19,7 @@ import { billingWebhookHandler } from "./routes/billingWebhook.js";
 import leaderboardRouter from "./routes/leaderboard.js";
 import weeklyReportRouter from "./routes/weeklyReport.js";
 import fitnessLibraryRouter from "./routes/fitnessLibrary.js";
+import referralsRouter from "./routes/referrals.js";
 import "./jobs/cron.js";
 import "./jobs/penalties.js";
 import { attachUser, requireAuth } from "./middleware/auth.js";
@@ -84,6 +85,7 @@ app.use("/api/billing", billingRouter);
 app.use("/api/leaderboard", leaderboardRouter);
 app.use("/api/weekly-report", weeklyReportRouter);
 app.use("/api/fitness-library", fitnessLibraryRouter);
+app.use("/api/referrals", referralsRouter);
 
 function startServer(preferredPort) {
 	const server = http.createServer(app);
