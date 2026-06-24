@@ -16,6 +16,14 @@ import { ONBOARDING_GOAL_CREATED, ONBOARDING_QUEST_COMPLETED } from "./tutorialE
 import { readOnboarding, writeOnboarding, type OnboardingPersisted } from "./tutorialStorage";
 import { getTutorialSteps, TUTORIAL_STEPS, type TutorialMode, type TutorialStepDef } from "./tutorialSteps";
 import { TutorialOverlay } from "./TutorialOverlay";
+import { dispatchSound } from "../audio/sounds";
+import {
+	playTutorialAdvance,
+	playTutorialComplete,
+	playTutorialMilestone,
+	playTutorialSkip,
+	playTutorialStepEnter,
+} from "./tutorialSounds";
 
 type TutorialContextValue = {
 	/** Tour is visible (modal + optional spotlight). */
@@ -52,12 +60,15 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	const [spotlightRect, setSpotlightRect] = useState<DOMRect | null>(null);
 	const [hasGoals, setHasGoals] = useState(false);
 	const advancingRef = useRef(false);
+	const wasActiveRef = useRef(false);
+	const prevStepIndexRef = useRef(-1);
 
 	const steps = useMemo(() => getTutorialSteps(mode, hasGoals), [mode, hasGoals]);
 	const stepCount = steps.length;
 	const step = steps[Math.min(stepIndex, stepCount - 1)];
 
 	const finishCompleted = useCallback(() => {
+		playTutorialComplete();
 		if (mode === "onboarding") {
 			persistPatch({ completed: true, skipped: false, started: true, stepIndex: stepCount });
 			trackTutorialCompleted();
@@ -66,6 +77,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 	}, [mode, stepCount]);
 
 	const skipTour = useCallback(() => {
+		playTutorialSkip();
 		if (mode === "onboarding") {
 			persistPatch({ skipped: true, completed: false, started: true, stepIndex });
 			trackTutorialSkipped(stepIndex);
@@ -100,6 +112,7 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 			finishCompleted();
 			return;
 		}
+		playTutorialAdvance();
 		advanceToIndex(stepIndex + 1);
 	}, [advanceToIndex, finishCompleted, stepCount, stepIndex, steps]);
 
@@ -208,11 +221,13 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 			if (steps[stepIndex]?.id !== "goals_create") return;
 			setHasGoals(true);
 			if (mode !== "onboarding") return;
+			playTutorialMilestone();
 			advanceToIndex(stepIndex + 1);
 		};
 		const onQuest = () => {
 			if (!active || mode !== "onboarding") return;
 			if (steps[stepIndex]?.id !== "quests_complete") return;
+			playTutorialMilestone();
 			advanceToIndex(stepIndex + 1);
 		};
 		window.addEventListener(ONBOARDING_GOAL_CREATED, onGoal);
@@ -222,6 +237,29 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
 			window.removeEventListener(ONBOARDING_QUEST_COMPLETED, onQuest);
 		};
 	}, [active, mode, stepIndex, advanceToIndex, steps]);
+
+	useEffect(() => {
+		if (active && !wasActiveRef.current) {
+			dispatchSound("arena_enter", { delayMs: 180 });
+		}
+		wasActiveRef.current = active;
+	}, [active]);
+
+	useEffect(() => {
+		if (!active) {
+			prevStepIndexRef.current = -1;
+			return;
+		}
+		if (prevStepIndexRef.current === -1) {
+			prevStepIndexRef.current = stepIndex;
+			if (stepIndex > 0) playTutorialStepEnter(step, stepIndex);
+			return;
+		}
+		if (stepIndex !== prevStepIndexRef.current) {
+			playTutorialStepEnter(step, stepIndex);
+			prevStepIndexRef.current = stepIndex;
+		}
+	}, [active, step, stepIndex]);
 
 	useLayoutEffect(() => {
 		if (!active) {

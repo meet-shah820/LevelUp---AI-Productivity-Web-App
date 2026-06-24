@@ -19,6 +19,7 @@ import {
 import { ONBOARDING_QUEST_COMPLETED } from "../tutorial/tutorialEvents";
 import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
 import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
+import { dispatchQuestCompleteSounds, playSound } from "../audio/sounds";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
 import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
 import { cn } from "../components/ui/utils";
@@ -134,6 +135,7 @@ function QuestCard({
   const elapsedMs =
     timer && (timer.running && timer.startedAtMs != null ? timer.elapsedMs + (Date.now() - timer.startedAtMs) : timer.elapsedMs);
   const startTimer = () => {
+    playSound("timer_start", 0.85);
     setTimers((prev) => {
       const cur = prev[quest.id] || { running: false, startedAtMs: null, elapsedMs: 0 };
       if (cur.running) return prev;
@@ -145,6 +147,7 @@ function QuestCard({
   };
 
   const stopTimer = () => {
+    playSound("timer_stop", 0.75);
     setTimers((prev) => {
       const cur = prev[quest.id];
       if (!cur || !cur.running || cur.startedAtMs == null) return prev;
@@ -620,6 +623,7 @@ export default function Quests() {
           timerUsed: timerActiveSeconds > 0,
         });
         dispatchCelebrations(celebrationsFromQuestCompleteResponse(resp));
+        dispatchQuestCompleteSounds({ xpAwarded: questRow?.xp });
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
         window.dispatchEvent(new CustomEvent(ONBOARDING_QUEST_COMPLETED));
       } catch {
@@ -634,6 +638,7 @@ export default function Quests() {
       try {
         await revertQuest(questId);
         trackQuestReverted("quests");
+        playSound("penalty", 0.65);
         window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
       } catch {
         await loadGoalsAndQuests();

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "motion/react";
-import { User, Bell, Lock, LogOut, CreditCard, ExternalLink, Shield } from "lucide-react";
+import { User, Bell, Lock, LogOut, CreditCard, ExternalLink, Shield, Volume2 } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -49,6 +49,13 @@ import {
 } from "../utils/siteAdminBypass";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import {
+  readSoundPreferences,
+  writeSoundPreferences,
+  SOUND_PREFS_UPDATED_EVENT,
+  type SoundPreferences,
+} from "../audio/soundPreferences";
+import { playSound, playUiConfirm } from "../audio/sounds";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -94,6 +101,7 @@ export default function Settings() {
     streakReminders: true,
     weeklySummary: false,
   });
+  const [soundPrefs, setSoundPrefs] = useState<SoundPreferences>(() => readSoundPreferences());
   const [savingNotif, setSavingNotif] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwSaving, setPwSaving] = useState(false);
@@ -188,6 +196,12 @@ export default function Settings() {
       const msg = e instanceof Error ? e.message : "Could not open portal.";
       toast.error(msg, { duration: 12000 });
     }
+  }, []);
+
+  useEffect(() => {
+    const syncSound = () => setSoundPrefs(readSoundPreferences());
+    window.addEventListener(SOUND_PREFS_UPDATED_EVENT, syncSound);
+    return () => window.removeEventListener(SOUND_PREFS_UPDATED_EVENT, syncSound);
   }, []);
 
   useEffect(() => {
@@ -346,6 +360,7 @@ export default function Settings() {
     setSavingNotif(true);
     try {
       await saveSettings({ notifications: notif });
+      playUiConfirm();
     } finally {
       setSavingNotif(false);
     }
@@ -962,6 +977,142 @@ export default function Settings() {
           )}
 
           {/* Notification Settings */}
+          {active === "notifications" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="space-y-6"
+          >
+            <Card className="bg-[#111827] border-purple-500/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Volume2 className="w-5 h-5 text-indigo-400" aria-hidden />
+                <h2 className="text-xl font-bold text-white">System Sounds</h2>
+              </div>
+              <p className="text-xs text-gray-400 mb-6">
+                Solo Leveling–style audio cues when you complete quests, level up, unlock achievements, and navigate the app.
+              </p>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-white mb-1">Sound effects</h3>
+                    <p className="text-xs text-gray-400">Quest clears, level ups, rank promotions, and milestones</p>
+                  </div>
+                  <Switch
+                    checked={soundPrefs.enabled}
+                    onCheckedChange={(v) => {
+                      const next = { ...soundPrefs, enabled: v };
+                      setSoundPrefs(next);
+                      writeSoundPreferences(next);
+                      if (v) playSound("notification", 0.8);
+                    }}
+                  />
+                </div>
+
+                <Separator className="bg-purple-500/20" />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-white mb-1">Interface sounds</h3>
+                    <p className="text-xs text-gray-400">Subtle clicks when navigating menus and confirming actions</p>
+                  </div>
+                  <Switch
+                    checked={soundPrefs.uiSounds}
+                    disabled={!soundPrefs.enabled}
+                    onCheckedChange={(v) => {
+                      const next = { ...soundPrefs, uiSounds: v };
+                      setSoundPrefs(next);
+                      writeSoundPreferences(next);
+                      if (v) playUiConfirm();
+                    }}
+                  />
+                </div>
+
+                <Separator className="bg-purple-500/20" />
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-white mb-1">Volume</h3>
+                      <p className="text-xs text-gray-400">{soundPrefs.volume}%</p>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    disabled={!soundPrefs.enabled}
+                    value={soundPrefs.volume}
+                    onChange={(e) => {
+                      const volume = Number(e.target.value);
+                      const next = { ...soundPrefs, volume };
+                      setSoundPrefs(next);
+                      writeSoundPreferences(next);
+                    }}
+                    className="w-full accent-indigo-500 disabled:opacity-40"
+                    aria-label="Sound effects volume"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!soundPrefs.enabled}
+                    className="border-purple-500/30 text-gray-200"
+                    onClick={() => playSound("quest_complete")}
+                  >
+                    Quest clear
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!soundPrefs.enabled}
+                    className="border-purple-500/30 text-gray-200"
+                    onClick={() => playSound("level_up")}
+                  >
+                    Level up
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!soundPrefs.enabled}
+                    className="border-purple-500/30 text-gray-200"
+                    onClick={() => playSound("rank_up")}
+                  >
+                    Rank up
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!soundPrefs.enabled}
+                    className="border-purple-500/30 text-gray-200"
+                    onClick={() => playSound("achievement")}
+                  >
+                    Achievement
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!soundPrefs.enabled}
+                    className="border-purple-500/30 text-gray-200"
+                    onClick={() => playSound("arena_enter")}
+                  >
+                    Tutorial arena
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+          )}
+
           {active === "notifications" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}

@@ -40,6 +40,8 @@ import {
 import type { BillingTierId } from "../utils/tierFeatures";
 import { EffectiveTierProvider } from "../context/EffectiveTierContext";
 import { CelebrationHost } from "./CelebrationModal";
+import { SoundHost } from "../audio/SoundHost";
+import { playUiClick, playSound } from "../audio/sounds";
 
 type Tier = BillingTierId;
 function tierRank(t: Tier): number {
@@ -267,6 +269,7 @@ export function Layout() {
                 key={item.name}
                 to={item.href}
                 end={item.href === "/"}
+                onClick={() => playUiClick()}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-3 rounded-xl transition-all group relative ${
                     isActive
@@ -355,7 +358,10 @@ export function Layout() {
                       key={item.name}
                       to={item.href}
                       end={item.href === "/"}
-                      onClick={() => setMobileMenuOpen(false)}
+                      onClick={() => {
+                        playUiClick();
+                        setMobileMenuOpen(false);
+                      }}
                       className={({ isActive }) =>
                         `flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${
                           isActive
@@ -442,12 +448,15 @@ export function Layout() {
               size="icon"
               className="relative text-gray-400 hover:text-white"
               onClick={() => {
+                playUiClick();
                 setNotifOpen((v) => {
                   const next = !v;
-                  // Mark as seen when opening the panel.
-                  if (next && latestNotifMs > 0) {
-                    setLastSeenNotifMs(latestNotifMs);
-                    writeLastSeenNotifMs(latestNotifMs);
+                  if (next) {
+                    if (hasUnreadNotifications) playSound("notification", 0.75);
+                    if (latestNotifMs > 0) {
+                      setLastSeenNotifMs(latestNotifMs);
+                      writeLastSeenNotifMs(latestNotifMs);
+                    }
                   }
                   return next;
                 });
@@ -521,6 +530,7 @@ export function Layout() {
       </div>
     </div>
     <CelebrationHost />
+    <SoundHost />
     </TutorialProvider>
   );
 }

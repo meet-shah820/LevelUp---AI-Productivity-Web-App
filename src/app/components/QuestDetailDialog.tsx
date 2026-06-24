@@ -24,6 +24,7 @@ import {
   type QuestDetailsPayload,
   type QuestExerciseItem,
 } from "../utils/api";
+import { playSound } from "../audio/sounds";
 import { formatQuestTitleForDisplay } from "../utils/questDisplay";
 
 type Props = {
@@ -64,7 +65,10 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
     setData(null);
     void getQuestDetails(questId)
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setData(d);
+          playSound("notification", 0.55);
+        }
       })
       .catch(() => {
         if (!cancelled) setError("Could not load mission briefing. Try again.");
@@ -104,6 +108,7 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
     try {
       const { exercises } = await patchQuestExerciseCheck(questId, key, checked);
       setExerciseRows(exercises);
+      if (checked) playSound("xp_gain", 0.7);
     } catch {
       /* keep prior state */
     } finally {

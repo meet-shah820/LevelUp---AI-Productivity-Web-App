@@ -33,6 +33,7 @@ import {
 } from "../utils/api";
 import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
 import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
+import { dispatchQuestCompleteSounds, playSound } from "../audio/sounds";
 import { WeeklyReportModal } from "../components/WeeklyReportModal";
 import { readOnboarding } from "../tutorial/tutorialStorage";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
@@ -311,6 +312,7 @@ export default function Dashboard() {
         leveledUp: Boolean((resp as { leveledUp?: boolean })?.leveledUp),
       });
       dispatchCelebrations(celebrationsFromQuestCompleteResponse(resp));
+      dispatchQuestCompleteSounds({ xpAwarded: quest?.xp });
       if (resp.leveledUp) {
         setLeveledUp(true);
         setTimeout(() => setLeveledUp(false), 1800);
@@ -334,6 +336,7 @@ export default function Dashboard() {
     try {
       await revertQuest(questId);
       trackQuestReverted("dashboard");
+      playSound("penalty", 0.65);
       const fresh = await getDashboard();
       setData(fresh);
       // Refresh header XP + notifications (Layout listens to this event)

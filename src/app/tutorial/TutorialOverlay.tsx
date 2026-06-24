@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
+import { playUiClick } from "../audio/sounds";
 import { stepRequiresProgramCreation, type TutorialStepDef } from "./tutorialSteps";
 
 function renderBodyMarkdownish(text: string) {
@@ -405,7 +406,10 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 						</div>
 						<button
 							type="button"
-							onClick={skipTour}
+							onClick={() => {
+								playUiClick();
+								skipTour();
+							}}
 							className="text-xs text-white/45 hover:text-white/80 shrink-0 pt-1"
 						>
 							Skip tour
@@ -421,7 +425,10 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 								type="button"
 								variant="outline"
 								className="border-purple-500/40 text-white hover:bg-white/10 w-full sm:w-auto"
-								onClick={() => navigate(step.path)}
+								onClick={() => {
+									playUiClick();
+									navigate(step.path);
+								}}
 							>
 								Go to {step.path === "/" ? "Dashboard" : step.path}
 							</Button>
@@ -431,7 +438,10 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 								type="button"
 								disabled={nextDisabled}
 								className="w-full sm:w-auto bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white disabled:opacity-40"
-								onClick={() => goNext()}
+								onClick={() => {
+									playUiClick();
+									goNext();
+								}}
 							>
 								{step.nextLabel || "Next"}
 							</Button>
