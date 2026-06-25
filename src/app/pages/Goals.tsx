@@ -215,7 +215,7 @@ export default function Goals() {
       if (MONGO_OBJECT_ID_RE.test(id)) {
         setGoalTopicError(null);
         try {
-          await updateGoal(id, {
+          const result = await updateGoal(id, {
             title: formData.title.trim(),
             description: formData.description.trim(),
             deadline: formData.deadline.trim() || undefined,
@@ -225,6 +225,12 @@ export default function Goals() {
           const res = await getGoals();
           setGoals(mapServerGoals(res.goals));
           window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
+          if (result.realigned) {
+            toast.success("Program updated. Quests from tomorrow will match your changes.");
+          } else {
+            toast.success("Program updated.");
+          }
+          setEditingGoal(null);
         } catch (e) {
           if (e instanceof GoalTopicMismatchError) {
             setGoalTopicError({ message: e.message, suggestions: e.suggestions });
@@ -378,7 +384,7 @@ export default function Goals() {
         className="flex items-center justify-between"
       >
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-white">Training</h1>
+          <h1 className="text-3xl font-bold text-white">Goals</h1>
           <p className="text-gray-400">
             Build training programs and get daily, weekly, and monthly fitness quests from the program engine
           </p>
@@ -530,12 +536,13 @@ export default function Goals() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 shrink-0">
                         <Button
                           size="icon"
                           variant="ghost"
                           onClick={() => handleEditGoal(goal)}
                           className="w-8 h-8 text-gray-400 hover:text-white"
+                          aria-label="Edit program"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
@@ -582,14 +589,25 @@ export default function Goals() {
                         </div>
                       )}
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                        asChild
-                      >
-                        <Link to={`/quests?goalId=${goal.id}`}>View quests</Link>
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditGoal(goal)}
+                          className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                          asChild
+                        >
+                          <Link to={`/quests?goalId=${goal.id}`}>View quests</Link>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -648,18 +666,20 @@ export default function Goals() {
         }}
       >
         <DialogContent
-          className="bg-[#111827] border-purple-500/30 text-white max-w-md"
+          className="bg-[#111827] border-purple-500/30 text-white max-w-md flex max-h-[min(90dvh,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
           data-tutorial="program-create-dialog"
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4 text-left">
             <DialogTitle>{editingGoal ? "Edit program" : "New program"}</DialogTitle>
             <DialogDescription className="text-gray-400">
-              Every program is fitness-only: daily missions, weekly checkpoints, monthly milestones, plus recovery quests
-              if you fall behind
+              {editingGoal
+                ? "Update your program details. Today's quests stay as they are; from tomorrow onward, quests will be regenerated to match your changes."
+                : "Every program is fitness-only: daily missions, weekly checkpoints, monthly milestones, plus recovery quests if you fall behind"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+            <div className="space-y-4 pb-4">
             {goalTopicError ? (
               <div
                 className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm space-y-2"
@@ -704,22 +724,28 @@ export default function Goals() {
 
             <div className="space-y-2">
               <Label htmlFor="deadline">Deadline (optional)</Label>
-              <Input
-                id="deadline"
-                type="date"
-                value={formData.deadline}
-                onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                onClick={(e) => {
-                  // Ensure clicking anywhere in the field opens the date picker (Chrome/Edge support).
-                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
-                  el.showPicker?.();
-                }}
-                onFocus={(e) => {
-                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
-                  el.showPicker?.();
-                }}
-                className="bg-[#0B0F1A] border-purple-500/30 text-white"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="deadline"
+                  type="date"
+                  value={formData.deadline}
+                  onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                  className="bg-[#0B0F1A] border-purple-500/30 text-white flex-1 min-w-0"
+                />
+                {formData.deadline ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Clear deadline"
+                    title="Clear deadline"
+                    onClick={() => setFormData({ ...formData, deadline: "" })}
+                    className="shrink-0 border-purple-500/30 text-gray-400 hover:text-white hover:bg-white/5"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             <div className="pt-2 border-t border-purple-500/15">
@@ -822,8 +848,9 @@ export default function Goals() {
               </div>
             </div>
           </div>
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-purple-500/20 px-6 py-4">
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}

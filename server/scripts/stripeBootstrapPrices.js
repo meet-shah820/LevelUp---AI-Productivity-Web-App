@@ -1,19 +1,15 @@
 /**
  * One-time (per Stripe account / mode) setup: creates LevelUp Starter / Pro / Elite products
- * with monthly prices. Prints env lines for STRIPE_PRICE_*.
+ * with monthly + annual prices (33% annual discount; 14-day trial configured at checkout).
+ * Prints env lines for STRIPE_PRICE_*.
  *
  * Usage (from repo root):
  *   Set STRIPE_SECRET_KEY in .env (sk_test_... or sk_live_...), then:
  *   npm run stripe:bootstrap
- *
- * Run separately for test vs live keys.
- *
- * Important: Paying with a test card in Checkout does NOT create products. Checkout only uses
- * existing Price IDs from your env. New catalog rows appear when you run this script or add
- * products manually in the Dashboard. Use ONE set of three prices in env to avoid duplicates.
  */
 import Stripe from "stripe";
 import { loadProjectEnv } from "../config/loadEnv.js";
+import { ANNUAL_TRIAL_DAYS } from "../constants/billingPlans.js";
 
 loadProjectEnv({ mode: "script" });
 
@@ -26,9 +22,30 @@ if (!key) {
 const stripe = new Stripe(key);
 
 const PLANS = [
-	{ tier: "starter", name: "LevelUp — Starter", amount: 499, envKey: "STRIPE_PRICE_STARTER" },
-	{ tier: "pro", name: "LevelUp — Pro", amount: 1299, envKey: "STRIPE_PRICE_PRO" },
-	{ tier: "elite", name: "LevelUp — Elite", amount: 2499, envKey: "STRIPE_PRICE_ELITE" },
+	{
+		tier: "starter",
+		name: "LevelUp — Starter",
+		amount: 499,
+		annualAmount: 3999,
+		envKey: "STRIPE_PRICE_STARTER",
+		annualEnvKey: "STRIPE_PRICE_STARTER_ANNUAL",
+	},
+	{
+		tier: "pro",
+		name: "LevelUp — Pro",
+		amount: 999,
+		annualAmount: 7999,
+		envKey: "STRIPE_PRICE_PRO",
+		annualEnvKey: "STRIPE_PRICE_PRO_ANNUAL",
+	},
+	{
+		tier: "elite",
+		name: "LevelUp — Elite",
+		amount: 1999,
+		annualAmount: 15999,
+		envKey: "STRIPE_PRICE_ELITE",
+		annualEnvKey: "STRIPE_PRICE_ELITE_ANNUAL",
+	},
 ];
 
 async function findProductByTier(tier) {
@@ -53,18 +70,18 @@ async function findProductByTier(tier) {
 	return null;
 }
 
-async function findMonthlyPriceForProduct(productId, unitAmount) {
+async function findRecurringPriceForProduct(productId, unitAmount, interval) {
 	const prices = await stripe.prices.list({ product: productId, active: true, limit: 20 });
 	return prices.data.find(
 		(p) =>
 			p.type === "recurring" &&
-			p.recurring?.interval === "month" &&
+			p.recurring?.interval === interval &&
 			p.unit_amount === unitAmount &&
 			p.currency === "usd",
 	);
 }
 
-async function ensurePlan({ tier, name, amount, envKey }) {
+async function ensurePlan({ tier, name, amount, annualAmount, envKey, annualEnvKey }) {
 	let product = await findProductByTier(tier);
 	if (!product) {
 		product = await stripe.products.create({
@@ -76,21 +93,43 @@ async function ensurePlan({ tier, name, amount, envKey }) {
 		console.log(`Reusing product ${product.id} (${tier})`);
 	}
 
-	let price = await findMonthlyPriceForProduct(product.id, amount);
+	let price = await findRecurringPriceForProduct(product.id, amount, "month");
 	if (!price) {
 		price = await stripe.prices.create({
 			product: product.id,
 			currency: "usd",
 			unit_amount: amount,
 			recurring: { interval: "month" },
-			metadata: { app: "levelup", app_tier: tier },
+			metadata: { app: "levelup", app_tier: tier, billing_interval: "month" },
 		});
 		console.log(`Created price ${price.id} ($${(amount / 100).toFixed(2)}/mo)`);
 	} else {
 		console.log(`Reusing price ${price.id} ($${(amount / 100).toFixed(2)}/mo)`);
 	}
 
-	return { envKey, priceId: price.id };
+	const out = [{ envKey, priceId: price.id }];
+
+	let annualPrice = await findRecurringPriceForProduct(product.id, annualAmount, "year");
+	if (!annualPrice) {
+		annualPrice = await stripe.prices.create({
+			product: product.id,
+			currency: "usd",
+			unit_amount: annualAmount,
+			recurring: { interval: "year" },
+			metadata: {
+				app: "levelup",
+				app_tier: tier,
+				billing_interval: "year",
+				discount_percent: "33",
+			},
+		});
+		console.log(`Created annual price ${annualPrice.id} ($${(annualAmount / 100).toFixed(2)}/yr)`);
+	} else {
+		console.log(`Reusing annual price ${annualPrice.id} ($${(annualAmount / 100).toFixed(2)}/yr)`);
+	}
+	out.push({ envKey: annualEnvKey, priceId: annualPrice.id });
+
+	return out;
 }
 
 async function main() {
@@ -99,15 +138,14 @@ async function main() {
 
 	const out = [];
 	for (const plan of PLANS) {
-		const row = await ensurePlan(plan);
-		out.push(`${row.envKey}=${row.priceId}`);
+		const rows = await ensurePlan(plan);
+		out.push(...rows);
 	}
 
 	console.log("\n--- Add these to .env and Render (same Stripe mode as this key) ---\n");
-	console.log(out.join("\n"));
-	console.log("\nThen restart the API. Webhook endpoint: POST /api/billing/webhook");
-	console.log("Subscribe to: checkout.session.completed, customer.subscription.created,");
-	console.log("customer.subscription.updated, customer.subscription.deleted\n");
+	console.log(out.map((row) => `${row.envKey}=${row.priceId}`).join("\n"));
+	console.log(`\nAnnual checkout includes a ${ANNUAL_TRIAL_DAYS}-day free trial (configured in the API at checkout).`);
+	console.log("Then restart the API. Webhook endpoint: POST /api/billing/webhook\n");
 }
 
 main().catch((e) => {

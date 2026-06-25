@@ -5,18 +5,11 @@ import AchievementUnlock from "../models/AchievementUnlock.js";
 import { ACHIEVEMENTS } from "../data/achievements.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
+import { assignUsernameFromDisplayName } from "../utils/usernameFromDisplayName.js";
 
 const router = express.Router();
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
-
-function normalizeUsernameInput(raw) {
-	return String(raw ?? "")
-		.trim()
-		.replace(/^@+/, "")
-		.replace(/\s+/g, "_")
-		.toLowerCase();
-}
 
 function validateAvatarDataUrl(raw) {
 	if (raw == null || raw === "") return { ok: true, value: "" };
@@ -110,29 +103,15 @@ router.get("/", async (req, res) => {
 	}
 });
 
-/** PATCH /api/profile — partial updates: username, displayName, email, bio, avatarDataUrl, clearAvatar */
+/** PATCH /api/profile — partial updates: displayName, email, bio, avatarDataUrl, clearAvatar (username follows displayName) */
 router.patch("/", async (req, res) => {
 	try {
 		const user = await getUserForReq(req);
 		const body = req.body || {};
 
-		if (body.username != null) {
-			const username = normalizeUsernameInput(body.username);
-			if (username.length < 3 || username.length > 32) {
-				return res.status(400).json({ error: "Username must be 3–32 characters" });
-			}
-			if (!/^[a-z0-9_]+$/.test(username)) {
-				return res.status(400).json({ error: "Use only letters, numbers, and underscores" });
-			}
-			const taken = await User.findOne({ username, _id: { $ne: user._id } });
-			if (taken) {
-				return res.status(409).json({ error: "That username is already taken" });
-			}
-			user.username = username;
-		}
-
 		if (body.displayName != null) {
 			user.displayName = String(body.displayName).trim().slice(0, 64);
+			await assignUsernameFromDisplayName(user);
 		}
 
 		if (body.email != null) {

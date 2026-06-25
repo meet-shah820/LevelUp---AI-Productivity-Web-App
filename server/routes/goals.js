@@ -343,6 +343,19 @@ function reconcileWindowsWithTemplateCounts(daysToSeed, weeksToSeed, monthsToSee
 	return { daysToSeed: d, weeksToSeed: w, monthsToSeed: mo };
 }
 
+function startOfTomorrow(now = new Date()) {
+	const d = new Date(now);
+	d.setHours(0, 0, 0, 0);
+	d.setDate(d.getDate() + 1);
+	return d;
+}
+
+function tomorrowNoon(now = new Date()) {
+	const d = startOfTomorrow(now);
+	d.setHours(12, 0, 0, 0);
+	return d;
+}
+
 function addDailyDayAtOffset(questsToInsert, seedPlan, userId, goalId, now, dayOffset) {
 	const date = new Date(now);
 	date.setDate(date.getDate() + dayOffset);
@@ -653,11 +666,11 @@ async function buildQuestDocumentsFromPlan(
 }
 
 /**
- * Regenerate AI plan, replace incomplete quests from today onward, refresh program modules cache.
- * @param {{ skipTopicGate?: boolean, plannerNote?: string, req?: import("express").Request }} options
+ * Regenerate AI plan, replace incomplete quests from a boundary date onward, refresh program modules cache.
+ * @param {{ skipTopicGate?: boolean, plannerNote?: string, req?: import("express").Request, fromNextDay?: boolean }} options
  */
 async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
-	const { skipTopicGate = false, plannerNote, req: reqTier } = options;
+	const { skipTopicGate = false, plannerNote, req: reqTier, fromNextDay = true } = options;
 	const title = goalDoc.title;
 	const description = String(goalDoc.description || "").trim().slice(0, 2000);
 	const userProfile = goalDoc.userProfile && typeof goalDoc.userProfile === "object" ? goalDoc.userProfile : null;
@@ -710,8 +723,14 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 	}
 	await Goal.findByIdAndUpdate(goalDoc._id, snapshotPatch);
 
-	const boundary = new Date();
-	boundary.setHours(0, 0, 0, 0);
+	const now = new Date();
+	const boundary = fromNextDay ? startOfTomorrow(now) : (() => {
+		const b = new Date(now);
+		b.setHours(0, 0, 0, 0);
+		return b;
+	})();
+	const seedAnchor = fromNextDay ? tomorrowNoon(now) : now;
+
 	await Quest.deleteMany({
 		goalId: goalDoc._id,
 		userId: user._id,
@@ -731,7 +750,7 @@ async function realignGoalQuestsFromAi(user, goalDoc, options = {}) {
 			userDbContext,
 			libraryContext,
 		},
-		new Date(),
+		seedAnchor,
 		user,
 		reqTier ?? null
 	);
@@ -1093,22 +1112,18 @@ router.patch("/:id", async (req, res) => {
 
 		let realigned = false;
 		if (textWouldChange && String(goal.category || "").toLowerCase() === "fitness") {
-			if (!meetsMinTierWithReq(user, "starter", req)) {
-				realigned = false;
-			} else {
-				try {
-					await realignGoalQuestsFromAi(user, goal, { skipTopicGate: true, req });
-					realigned = true;
-				} catch (e) {
-					if (e?.code === "goal_topic_mismatch") {
-						return res.status(422).json({
-							error: "goal_topic_mismatch",
-							message: e.payload?.message,
-							suggestions: e.payload?.suggestions ?? [],
-						});
-					}
-					throw e;
+			try {
+				await realignGoalQuestsFromAi(user, goal, { skipTopicGate: true, req, fromNextDay: true });
+				realigned = true;
+			} catch (e) {
+				if (e?.code === "goal_topic_mismatch") {
+					return res.status(422).json({
+						error: "goal_topic_mismatch",
+						message: e.payload?.message,
+						suggestions: e.payload?.suggestions ?? [],
+					});
 				}
+				throw e;
 			}
 		}
 

@@ -35,7 +35,7 @@ type TutorialContextValue = {
 	spotlightRect: DOMRect | null;
 	goNext: () => void;
 	skipTour: () => void;
-	/** Restart the full tour (Training step is intro-only, not create-a-program). */
+	/** Restart the full tour (Goals step is intro-only, not create-a-program). */
 	startTutorial: () => void;
 };
 

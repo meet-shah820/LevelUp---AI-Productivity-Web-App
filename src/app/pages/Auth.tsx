@@ -50,7 +50,8 @@ export default function Auth() {
 	}, [searchParams]);
 
 	const [mode, setMode] = useState<"login" | "signup">("login");
-	const [username, setUsername] = useState("");
+	const [loginUsername, setLoginUsername] = useState("");
+	const [displayName, setDisplayName] = useState("");
 	const [password, setPassword] = useState("");
 	const [agreeTerms, setAgreeTerms] = useState(false);
 	const [agreePrivacy, setAgreePrivacy] = useState(false);
@@ -93,7 +94,12 @@ export default function Auth() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!requireSignupConsents()) return;
-		if (!username.trim()) {
+		if (mode === "signup") {
+			if (!displayName.trim()) {
+				setError("Display name is required");
+				return;
+			}
+		} else if (!loginUsername.trim()) {
 			setError("Username is required");
 			return;
 		}
@@ -101,11 +107,15 @@ export default function Auth() {
 		setError(null);
 		try {
 			const pendingRef = readPendingReferralCode();
-			const body: Record<string, string> = { username, password };
+			const body: Record<string, string> =
+				mode === "signup"
+					? { displayName: displayName.trim(), password }
+					: { username: loginUsername.trim(), password };
 			if (mode === "signup" && pendingRef) body.referralCode = pendingRef;
-			const res = (await postJson(`/api/auth/${mode}`, body)) as { token?: string };
+			const res = (await postJson(`/api/auth/${mode}`, body)) as { token?: string; username?: string };
 			if (!res.token) throw new Error("Missing token");
-			finishAuth(res.token, username.trim());
+			const handle = res.username || loginUsername.trim();
+			finishAuth(res.token, handle);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Authentication failed");
 		} finally {
@@ -135,15 +145,30 @@ export default function Auth() {
 						</Button>
 					</div>
 					<form onSubmit={handleSubmit} className="space-y-4">
-						<Input
-							placeholder="Username"
-							value={username}
-							onChange={(e) => setUsername(e.target.value)}
-							className="bg-[#0B0F1A] border-purple-500/30 text-white"
-							name="username"
-							autoComplete={mode === "login" ? "username" : "username"}
-							required
-						/>
+						{mode === "signup" ? (
+							<Input
+								placeholder="Display name"
+								value={displayName}
+								onChange={(e) => setDisplayName(e.target.value)}
+								className="bg-[#0B0F1A] border-purple-500/30 text-white"
+								name="displayName"
+								autoComplete="name"
+								required
+							/>
+						) : (
+							<Input
+								placeholder="Username"
+								value={loginUsername}
+								onChange={(e) => setLoginUsername(e.target.value)}
+								className="bg-[#0B0F1A] border-purple-500/30 text-white"
+								name="username"
+								autoComplete="username"
+								required
+							/>
+						)}
+						{mode === "signup" ? (
+							<p className="text-xs text-gray-500 -mt-2">Your username is created automatically from your display name.</p>
+						) : null}
 						<Input
 							type="password"
 							placeholder="Password (any length)"

@@ -752,7 +752,7 @@ export default function Quests() {
                 </Badge>
                 <h2 className="text-lg font-bold text-white leading-snug">Add your first training program</h2>
                 <p className="text-sm text-gray-300 leading-relaxed">
-                  Open <span className="text-white font-medium">Training</span> from the sidebar, create a program, and
+                  Open <span className="text-white font-medium">Goals</span> from the sidebar, create a program, and
                   come back here — your daily, weekly, and monthly quests will populate once the program exists. You will
                   earn XP when you finish.
                 </p>

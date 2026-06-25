@@ -1,9 +1,30 @@
 /**
- * Four tiers: one free + three paid (monthly via Stripe Price IDs in env).
+ * Four tiers: one free + three paid (monthly + annual via Stripe Price IDs in env).
  * Display amounts are for marketing; actual charge is whatever each Stripe Price is set to.
  */
 
 export const PAID_TIER_IDS = ["starter", "pro", "elite"];
+
+/** All paid tiers support annual billing (33% off vs 12× monthly) with a 14-day trial at checkout. */
+export const ANNUAL_ELIGIBLE_TIER_IDS = ["starter", "pro", "elite"];
+
+/** Free trial on annual plans — card required upfront; billing starts after trial ends. */
+export const ANNUAL_TRIAL_DAYS = 14;
+
+/** @param {number} monthlyPriceCents @param {number} annualPriceCents */
+export function annualDiscountPercent(monthlyPriceCents, annualPriceCents) {
+	const fullYear = Math.round(Number(monthlyPriceCents) || 0) * 12;
+	if (fullYear <= 0) return 0;
+	const annual = Math.round(Number(annualPriceCents) || 0);
+	return Math.max(0, Math.round((1 - annual / fullYear) * 100));
+}
+
+/** @param {number} monthlyPriceCents @param {number} annualPriceCents */
+export function annualSavingsCents(monthlyPriceCents, annualPriceCents) {
+	const fullYear = Math.round(Number(monthlyPriceCents) || 0) * 12;
+	const annual = Math.round(Number(annualPriceCents) || 0);
+	return Math.max(0, fullYear - annual);
+}
 
 /**
  * Strip BOM, whitespace, and wrapping quotes from env-based Price IDs (common Dashboard / Render paste issues).
@@ -26,8 +47,14 @@ export function normalizeStripePriceId(raw) {
 	return s;
 }
 
-/** @param {string} tier */
-export function getStripePriceIdForTier(tier) {
+/** @param {string} tier @param {"month" | "year"} [interval] */
+export function getStripePriceIdForTier(tier, interval = "month") {
+	if (interval === "year") {
+		if (tier === "starter") return normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER_ANNUAL);
+		if (tier === "pro") return normalizeStripePriceId(process.env.STRIPE_PRICE_PRO_ANNUAL);
+		if (tier === "elite") return normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE_ANNUAL);
+		return "";
+	}
 	if (tier === "starter") return normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER);
 	if (tier === "pro") return normalizeStripePriceId(process.env.STRIPE_PRICE_PRO);
 	if (tier === "elite") return normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE);
@@ -41,10 +68,26 @@ export function getTierFromStripePriceId(priceId) {
 	const s = normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER);
 	const p = normalizeStripePriceId(process.env.STRIPE_PRICE_PRO);
 	const e = normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE);
-	if (s && id === s) return "starter";
-	if (p && id === p) return "pro";
-	if (e && id === e) return "elite";
+	const sYear = normalizeStripePriceId(process.env.STRIPE_PRICE_STARTER_ANNUAL);
+	const pYear = normalizeStripePriceId(process.env.STRIPE_PRICE_PRO_ANNUAL);
+	const eYear = normalizeStripePriceId(process.env.STRIPE_PRICE_ELITE_ANNUAL);
+	if ((s && id === s) || (sYear && id === sYear)) return "starter";
+	if ((p && id === p) || (pYear && id === pYear)) return "pro";
+	if ((e && id === e) || (eYear && id === eYear)) return "elite";
 	return null;
+}
+
+export function stripeAnnualPricesConfigured() {
+	return Boolean(
+		getStripePriceIdForTier("starter", "year") &&
+			getStripePriceIdForTier("pro", "year") &&
+			getStripePriceIdForTier("elite", "year"),
+	);
+}
+
+/** @param {string} tier */
+export function tierSupportsAnnualBilling(tier) {
+	return ANNUAL_ELIGIBLE_TIER_IDS.includes(tier);
 }
 
 export function stripePricesConfigured() {
@@ -63,19 +106,16 @@ export const TIER_CATALOG = [
 	{
 		id: "free",
 		name: "Free",
-		tagline: "Start leveling up",
+		tagline: "Everything you need to get started",
 		monthlyPriceCents: 0,
-		features: [
-			"Dashboard, quests, goals, and focus mode",
-			"Achievements, streak, and leaderboard",
-			"Core notifications and profile",
-		],
+		features: ["5 quests per month", "Basic analytics", "Community support"],
 	},
 	{
 		id: "starter",
 		name: "Starter",
-		tagline: "Stay consistent",
+		tagline: "Great for solo adventurers leveling up",
 		monthlyPriceCents: 499,
+		annualPriceCents: 3999,
 		features: [
 			"Everything in Free",
 			"More quest depth and goal flexibility",
@@ -86,8 +126,11 @@ export const TIER_CATALOG = [
 	{
 		id: "pro",
 		name: "Pro",
-		tagline: "Level up faster",
-		monthlyPriceCents: 1299,
+		tagline: "For serious questers chasing mastery",
+		monthlyPriceCents: 999,
+		compareAtMonthlyPriceCents: 1299,
+		annualPriceCents: 7999,
+		pricingNote: "lower monthly",
 		features: [
 			"Everything in Starter",
 			"Analytics and insights",
@@ -99,8 +142,11 @@ export const TIER_CATALOG = [
 	{
 		id: "elite",
 		name: "Elite",
-		tagline: "Maximum momentum",
-		monthlyPriceCents: 2499,
+		tagline: "Full power for ambitious teams",
+		monthlyPriceCents: 1999,
+		compareAtMonthlyPriceCents: 2499,
+		annualPriceCents: 15999,
+		pricingNote: "lower monthly",
 		features: [
 			"Everything in Pro",
 			"Full leaderboard (all players per rank)",

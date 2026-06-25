@@ -10,6 +10,7 @@ import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { avatarInitialsFromProfile } from "../utils/avatarInitials";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +50,7 @@ import {
 } from "../utils/siteAdminBypass";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
+import { usernameFromDisplayName } from "../utils/usernameFromDisplayName";
 import {
   readSoundPreferences,
   writeSoundPreferences,
@@ -71,7 +73,6 @@ export default function Settings() {
 
   const [profileHandle, setProfileHandle] = useState("shadow_hunter");
   const [displayName, setDisplayName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [bio, setBio] = useState("");
   const [serverAvatar, setServerAvatar] = useState("");
@@ -114,8 +115,6 @@ export default function Settings() {
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [siteAdminBypass, setSiteAdminBypass] = useState(() => readSiteAdminBypassActive());
   const [adminGatePassword, setAdminGatePassword] = useState("");
-  // If true, username will be auto-generated from display name until the user edits username directly.
-  const [usernameAuto, setUsernameAuto] = useState(false);
 
   const { effectiveTier } = useEffectiveTier();
   const canWeeklySummaryEmail = tierMeetsMinimum(effectiveTier, TIER_FOR.weeklySummaryEmailPreference);
@@ -224,10 +223,6 @@ export default function Settings() {
       const u = p.user;
       setProfileHandle(u.username);
       setDisplayName(u.displayName || "");
-      setUsername(u.username);
-      // If username is still the default reset value, treat it as "not chosen yet"
-      // so display name edits can auto-generate a better username.
-      setUsernameAuto(String(u.username || "").trim() === "shadow_hunter");
       setEmail(u.email || "");
       setBio(u.bio || "");
       setServerAvatar(u.avatarDataUrl || "");
@@ -246,19 +241,6 @@ export default function Settings() {
     }
   }, []);
 
-  const toUsernameFromDisplayName = (name: string) => {
-    const base = String(name || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^a-z0-9_]/g, "_")
-      .replace(/_+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 32);
-    if (base.length >= 3) return base;
-    return "shadow_hunter";
-  };
-
   useEffect(() => {
     void loadProfileFields();
   }, [loadProfileFields]);
@@ -272,13 +254,8 @@ export default function Settings() {
   }, [loadProfileFields]);
 
   const avatarDisplaySrc = avatarRemoved && !localAvatar ? "" : localAvatar || serverAvatar;
-  const avatarInitials = (() => {
-    const d = displayName.trim();
-    const base = d || username.replace(/_/g, " ");
-    const parts = base.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return (base.replace(/[^a-z0-9]/gi, "").slice(0, 2) || "SH").toUpperCase();
-  })();
+  const usernamePreview = usernameFromDisplayName(displayName, profileHandle || "shadow_hunter");
+  const avatarInitials = avatarInitialsFromProfile(displayName, usernamePreview);
 
   const handleAvatarFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -303,16 +280,15 @@ export default function Settings() {
 
   const handleSaveProfile = async () => {
     setProfileMsg(null);
-    const u = username.trim();
-    if (u.length < 3 || u.length > 32) {
-      setProfileMsg("Username must be 3–32 characters.");
+    const dn = displayName.trim();
+    if (dn.length < 1) {
+      setProfileMsg("Display name is required.");
       return;
     }
     setProfileSaving(true);
     try {
       const payload: Parameters<typeof patchProfile>[0] = {
-        username: u,
-        displayName: displayName.trim(),
+        displayName: dn,
         email: email.trim(),
         bio: bio.trim(),
       };
@@ -346,8 +322,6 @@ export default function Settings() {
     const s = profileSnapshot.current;
     if (!s) return;
     setDisplayName(s.displayName);
-    setUsername(s.username);
-    setUsernameAuto(String(s.username || "").trim() === "shadow_hunter");
     setEmail(s.email);
     setBio(s.bio);
     setServerAvatar(s.serverAvatar);
@@ -538,34 +512,21 @@ export default function Settings() {
                     <Input
                       id="name"
                       value={displayName}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setDisplayName(next);
-                        if (usernameAuto) {
-                          setUsername(toUsernameFromDisplayName(next));
-                        }
-                      }}
+                      onChange={(e) => setDisplayName(e.target.value)}
                       placeholder="How your name appears in the app"
                       maxLength={64}
                       className="bg-[#1F2937] border-purple-500/30 text-white placeholder:text-gray-500"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      value={username}
-                      onChange={(e) => {
-                        const cleaned = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
-                        setUsername(cleaned);
-                        // If the user clears username, resume auto-generation from display name.
-                        setUsernameAuto(cleaned.length === 0 || cleaned === "shadow_hunter");
-                      }}
-                      placeholder="shadow_hunter"
-                      maxLength={32}
-                      className="bg-[#1F2937] border-purple-500/30 text-white placeholder:text-gray-500"
-                    />
-                    <p className="text-xs text-gray-500">Letters, numbers, underscores only (3–32).</p>
+                    <Label htmlFor="username-preview">Username</Label>
+                    <div
+                      id="username-preview"
+                      className="flex h-9 w-full items-center rounded-md border border-purple-500/30 bg-[#1F2937] px-3 text-sm text-gray-300"
+                    >
+                      @{usernamePreview}
+                    </div>
+                    <p className="text-xs text-gray-500">Set automatically from your display name when you save.</p>
                   </div>
                 </div>
 

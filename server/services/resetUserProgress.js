@@ -3,23 +3,11 @@ import Goal from "../models/Goal.js";
 import Quest from "../models/Quest.js";
 import History from "../models/History.js";
 import AchievementUnlock from "../models/AchievementUnlock.js";
-
-async function pickResetUsername(userId) {
-	const desired = "shadow_hunter";
-	const existing = await User.findOne({ username: desired });
-	if (!existing) return desired;
-	if (String(existing._id) === String(userId)) return desired;
-	for (let i = 0; i < 20; i++) {
-		const candidate = `${desired}_${Math.floor(Math.random() * 9000 + 1000)}`;
-		// eslint-disable-next-line no-await-in-loop
-		const taken = await User.findOne({ username: candidate });
-		if (!taken) return candidate;
-	}
-	return `${desired}_${Date.now()}`;
-}
+import { pickAvailableUsernameFromDisplayName } from "../utils/usernameFromDisplayName.js";
 
 export async function resetUserProgress(userId) {
-	const resetUsername = await pickResetUsername(userId);
+	const resetDisplayName = "shadow_hunter";
+	const resetUsername = await pickAvailableUsernameFromDisplayName(resetDisplayName, userId);
 	await Quest.deleteMany({ userId });
 	await Goal.deleteMany({ userId });
 	await History.deleteMany({ userId });
@@ -29,7 +17,7 @@ export async function resetUserProgress(userId) {
 		{
 			$set: {
 				username: resetUsername,
-				displayName: "shadow_hunter",
+				displayName: resetDisplayName,
 				level: 1,
 				xp: 0,
 				streak: 0,

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { TutorialHelpButton } from "../tutorial/TutorialHelpButton";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { avatarInitialsFromProfile } from "../utils/avatarInitials";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { motion, AnimatePresence } from "motion/react";
@@ -162,7 +163,7 @@ export function Layout() {
     return [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Quests", href: "/quests", icon: Target },
-      { name: "Training", href: "/goals", icon: Flag },
+      { name: "Goals", href: "/goals", icon: Flag },
       { name: "Achievements", href: "/achievements", icon: Trophy },
       // Pro+ feature example
       ...(t >= 2 ? [{ name: "Analytics", href: "/analytics", icon: BarChart3 }] : []),
@@ -189,6 +190,11 @@ export function Layout() {
       maxXP: u.nextLevelXp,
       rank: u.rank ?? "E",
     };
+  }, [dash]);
+
+  const displayInitials = useMemo(() => {
+    if (!dash?.user) return "SH";
+    return avatarInitialsFromProfile(dash.user.displayName, dash.user.username);
   }, [dash]);
 
   function handleNotificationClick(it: NotifItem) {
@@ -510,7 +516,7 @@ export function Layout() {
               <Avatar className="w-10 h-10 border-2 border-purple-500/50 shadow-lg shadow-purple-500/30">
                 <AvatarImage src={user.avatar} />
                 <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                  SH
+                  {displayInitials}
                 </AvatarFallback>
               </Avatar>
             </div>

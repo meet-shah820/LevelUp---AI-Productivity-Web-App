@@ -10,7 +10,7 @@ const DEFAULT_USERNAME = "shadow_hunter";
 export async function getOrCreateDemoUser() {
 	let user = await User.findOne().sort({ createdAt: 1 }).exec();
 	if (!user) {
-		user = await User.create({ username: DEFAULT_USERNAME });
+		user = await User.create({ username: DEFAULT_USERNAME, displayName: "Shadow Hunter" });
 	}
 	return user;
 }

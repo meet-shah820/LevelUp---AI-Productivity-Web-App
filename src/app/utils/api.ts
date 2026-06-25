@@ -595,11 +595,22 @@ export async function getBillingStatus(): Promise<BillingStatus> {
 	return res.json();
 }
 
+export type BillingInterval = "month" | "year";
+
 export type BillingPlanTier = {
 	id: BillingTierId;
 	name: string;
 	tagline: string;
 	monthlyPriceCents: number;
+	/** Strikethrough “was” monthly price for display (Pro/Elite). */
+	compareAtMonthlyPriceCents?: number | null;
+	annualPriceCents?: number;
+	annualDiscountPercent?: number;
+	annualSavingsCents?: number;
+	annualTrialDays?: number;
+	supportsAnnual?: boolean;
+	/** UI hint: keep monthly | lower monthly */
+	pricingNote?: string | null;
 	/** ISO 4217 from Stripe Price (e.g. usd, cad) */
 	currency: string;
 	/** stripe = from live Price retrieve; fallback = Stripe off or error */
@@ -608,13 +619,17 @@ export type BillingPlanTier = {
 	highlight?: boolean;
 	stripeConfigured: boolean;
 	hasPriceId: boolean;
+	hasAnnualPriceId?: boolean;
 	/** False when STRIPE_SECRET_KEY cannot retrieve this tier's Price object */
 	stripePriceReachable?: boolean;
+	stripeAnnualPriceReachable?: boolean;
 };
 
 export type BillingPlansResponse = {
 	tiers: BillingPlanTier[];
 	checkoutAvailable: boolean;
+	annualCheckoutAvailable?: boolean;
+	annualTrialDays?: number;
 	/** Shown when Price IDs are set but secret key cannot load them (account / mode mismatch) */
 	plansNotice?: string | null;
 };
@@ -625,11 +640,14 @@ export async function getBillingPlans(): Promise<BillingPlansResponse> {
 	return res.json();
 }
 
-export async function createBillingCheckoutSession(tier: Exclude<BillingTierId, "free">): Promise<{ url: string }> {
+export async function createBillingCheckoutSession(
+	tier: Exclude<BillingTierId, "free">,
+	interval: BillingInterval = "month",
+): Promise<{ url: string }> {
 	const res = await apiFetch("/api/billing/checkout-session", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ tier }),
+		body: JSON.stringify({ tier, interval }),
 	});
 	const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
 	if (!res.ok) {

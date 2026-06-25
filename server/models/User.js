@@ -12,6 +12,7 @@ const StatsSchema = new mongoose.Schema(
 
 const UserSchema = new mongoose.Schema(
 	{
+		/** Unique login handle; derived from displayName when the profile is saved */
 		username: { type: String, required: true, unique: true },
 		password: { type: String },
 		/** Anonymous app trial; password null; not the same as OAuth (googleId set there). */

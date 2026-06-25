@@ -18,6 +18,7 @@ import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { avatarInitialsFromProfile } from "../utils/avatarInitials";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import {
@@ -251,6 +252,11 @@ export default function Dashboard() {
     };
   }, [data]);
 
+  const displayInitials = useMemo(() => {
+    if (!data?.user) return "SH";
+    return avatarInitialsFromProfile(data.user.displayName, data.user.username);
+  }, [data]);
+
   const stats = useMemo(() => {
     const s = data?.user.stats || {};
     return [
@@ -402,7 +408,7 @@ export default function Dashboard() {
                   <Avatar className="w-24 h-24 border-4 border-purple-500/50 shadow-2xl shadow-purple-500/50">
                     <AvatarImage src={user.avatar} />
                     <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-2xl">
-                      SH
+                      {displayInitials}
                     </AvatarFallback>
                   </Avatar>
 

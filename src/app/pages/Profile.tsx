@@ -1,26 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
-import { Edit2, Award, Target, Clock, TrendingUp, Swords, Brain, Shield, Zap, Flame } from "lucide-react";
+import { Award, Target, Clock, TrendingUp, Swords, Brain, Shield, Zap, Flame } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Progress } from "../components/ui/progress";
 import { Badge } from "../components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { getProfile, getRecentHistory, patchProfile, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
+import { getProfile, getRecentHistory, PROFILE_UPDATED_EVENT, RANK_UPDATED_EVENT } from "../utils/api";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 import { AchievementShareMenu } from "../components/AchievementShareMenu";
+import { avatarInitialsFromProfile } from "../utils/avatarInitials";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -29,10 +20,6 @@ export default function Profile() {
   const [recentItems, setRecentItems] = useState<
     { id: string; type: "quest" | "level" | "achievement" | "focus" | "penalty"; message: string; xp?: number; at: string }[]
   >([]);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameInput, setRenameInput] = useState("");
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const [renameSaving, setRenameSaving] = useState(false);
 
   const loadProfile = async () => {
     try {
@@ -67,29 +54,6 @@ export default function Profile() {
     };
   }, []);
 
-  const openRename = () => {
-    const u = data?.user?.username ?? "shadow_hunter";
-    setRenameInput(u);
-    setRenameError(null);
-    setRenameOpen(true);
-  };
-
-  const saveRename = async () => {
-    setRenameError(null);
-    setRenameSaving(true);
-    try {
-      const res = await patchProfile({ username: renameInput.trim() });
-      localStorage.setItem("last_username", res.user.username);
-      await loadProfile();
-      window.dispatchEvent(new CustomEvent(PROFILE_UPDATED_EVENT));
-      setRenameOpen(false);
-    } catch (e: unknown) {
-      setRenameError(e instanceof Error ? e.message : "Could not update username");
-    } finally {
-      setRenameSaving(false);
-    }
-  };
-
   const user = useMemo(() => {
     if (!data) {
       return {
@@ -121,15 +85,10 @@ export default function Profile() {
     };
   }, [data]);
 
-  const displayInitials = useMemo(() => {
-    const dn = String(data?.user?.displayName || "").trim();
-    const un = String(data?.user?.username || "sh");
-    const base = dn || un.replace(/_/g, " ");
-    const parts = base.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    const clean = base.replace(/[^a-z0-9]/gi, "");
-    return (clean.slice(0, 2) || "SH").toUpperCase();
-  }, [data]);
+  const displayInitials = useMemo(
+    () => avatarInitialsFromProfile(data?.user?.displayName, data?.user?.username),
+    [data]
+  );
 
   const stats = [
     { name: "Strength", value: data?.user?.stats?.strength ?? 0, max: 100, icon: Swords, color: "from-red-500 to-orange-500" },
@@ -186,12 +145,7 @@ export default function Profile() {
                     </AvatarFallback>
                   </Avatar>
 
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <h2 className="text-2xl font-bold text-white">{user.name}</h2>
-                    <Button type="button" size="icon" variant="ghost" className="w-8 h-8" onClick={openRename} title="Change username">
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">{user.name}</h2>
 
                   <p className="text-gray-400 mb-3">{user.username}</p>
 
@@ -393,45 +347,6 @@ export default function Profile() {
           </motion.div>
         </div>
       </div>
-
-      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-        <DialogContent className="bg-[#111827] border-purple-500/30 text-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Change username</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              This updates your handle everywhere in the app (header, dashboard, settings). Use 3–32 characters: letters, numbers, and underscores.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="profile-username">Username</Label>
-            <div className="flex items-center gap-1 rounded-md border border-purple-500/30 bg-[#0B0F1A] px-3">
-              <span className="text-gray-400 select-none">@</span>
-              <Input
-                id="profile-username"
-                value={renameInput}
-                onChange={(e) => setRenameInput(e.target.value.replace(/\s/g, "_"))}
-                className="border-0 bg-transparent shadow-none focus-visible:ring-0 text-white"
-                placeholder="your_handle"
-                autoComplete="username"
-              />
-            </div>
-            {renameError ? <p className="text-sm text-red-400">{renameError}</p> : null}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" className="border-purple-500/30 text-white" onClick={() => setRenameOpen(false)} disabled={renameSaving}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="bg-gradient-to-r from-indigo-500 to-purple-500"
-              onClick={() => void saveRename()}
-              disabled={renameSaving || renameInput.trim().length < 3}
-            >
-              {renameSaving ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -11,6 +11,10 @@ import { requireAuth } from "../middleware/auth.js";
 import { getStripe } from "../services/stripeClient.js";
 import { cancelStripeBillingForUser } from "../services/stripeAccountCleanup.js";
 import { applyReferralOnSignup, normalizeReferralCode } from "../services/referralEngine.js";
+import {
+	pickAvailableUsernameFromDisplayName,
+	assignUsernameFromDisplayName,
+} from "../utils/usernameFromDisplayName.js";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
@@ -43,18 +47,6 @@ function toUsernameCandidate(email, fallback = "user") {
 	return (base || fallback).toLowerCase();
 }
 
-async function pickAvailableUsername(base) {
-	const normalized = (base || "user").toLowerCase();
-	for (let i = 0; i < 20; i++) {
-		const suffix = i === 0 ? "" : `_${Math.floor(Math.random() * 9000 + 1000)}`;
-		const candidate = `${normalized}${suffix}`.slice(0, 30);
-		// eslint-disable-next-line no-await-in-loop
-		const exists = await User.findOne({ username: candidate });
-		if (!exists) return candidate;
-	}
-	return `${normalized}_${Date.now()}`.slice(0, 30);
-}
-
 router.get("/oauth-health", (req, res) => {
 	const clientId = envTrim("GOOGLE_CLIENT_ID");
 	const clientSecret = envTrim("GOOGLE_CLIENT_SECRET");
@@ -74,16 +66,19 @@ router.get("/oauth-health", (req, res) => {
 
 router.post("/signup", async (req, res) => {
 	try {
-		const { username, password, referralCode } = req.body || {};
-		if (typeof username !== "string" || typeof password !== "string") {
-			return res.status(400).json({ error: "username and password required" });
+		const { username, displayName, password, referralCode } = req.body || {};
+		if (typeof password !== "string") {
+			return res.status(400).json({ error: "password required" });
 		}
-		const name = username.trim();
-		if (!name) return res.status(400).json({ error: "username required" });
-		const existing = await User.findOne({ username: name });
-		if (existing) return res.status(409).json({ error: "username taken" });
+		const dn = String(displayName ?? username ?? "").trim();
+		if (!dn) return res.status(400).json({ error: "display name required" });
+		const handle = await pickAvailableUsernameFromDisplayName(dn);
 		const hashed = await bcrypt.hash(password, 10);
-		const user = await User.create({ username: name, password: hashed });
+		const user = await User.create({
+			username: handle,
+			displayName: dn.slice(0, 64),
+			password: hashed,
+		});
 		const refCode = normalizeReferralCode(referralCode);
 		if (refCode) {
 			try {
@@ -94,7 +89,7 @@ router.post("/signup", async (req, res) => {
 			}
 		}
 		const token = makeJwt(user);
-		return res.json({ token });
+		return res.json({ token, username: user.username });
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error(e);
@@ -211,18 +206,19 @@ router.get("/google/callback", async (req, res) => {
 			if (user && !user.googleId) {
 				user.googleId = googleId;
 				if (!user.displayName && displayName) user.displayName = displayName;
+				if (displayName) await assignUsernameFromDisplayName(user, toUsernameCandidate(email, "google_user"));
 				await user.save();
 			}
 		}
 		if (!user) {
-			const base = toUsernameCandidate(email, "google_user");
-			const username = await pickAvailableUsername(base);
+			const fallback = toUsernameCandidate(email, "google_user");
+			const username = await pickAvailableUsernameFromDisplayName(displayName, null, fallback);
 			user = await User.create({
 				username,
 				password: null,
 				googleId,
 				email,
-				displayName,
+				displayName: displayName.slice(0, 64),
 			});
 			isNewUser = true;
 		}

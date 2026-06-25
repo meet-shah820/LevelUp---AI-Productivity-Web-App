@@ -20,7 +20,7 @@ const TUTORIAL_HEAD: TutorialStepDef[] = [
 		path: "/",
 		kind: "next",
 		title: "Welcome to LevelUp",
-		body: "This quick tour walks you through the essentials. You will begin on the **Quests** page with a short **onboarding quest**, then Training, more quests, achievements, streaks, leaderboard, profile, pricing, and settings. Progress when you tap **Next** or complete the highlighted actions.",
+		body: "This quick tour walks you through the essentials. You will begin on the **Quests** page with a short **onboarding quest**, then Goals, more quests, achievements, streaks, leaderboard, profile, pricing, and settings. Progress when you tap **Next** or complete the highlighted actions.",
 		nextLabel: "Start tour",
 	},
 	{
@@ -28,7 +28,7 @@ const TUTORIAL_HEAD: TutorialStepDef[] = [
 		path: "/quests",
 		kind: "next",
 		title: "Onboarding quest: First program",
-		body: "The highlighted card is your **onboarding quest**. Finish it by adding your first training program under **Training** — that unlocks generated quests here and earns XP. Tap **Continue** when you are ready to go to Training.",
+		body: "The highlighted card is your **onboarding quest**. Finish it by adding your first program under **Goals** — that unlocks generated quests here and earns XP. Tap **Continue** when you are ready to go to Goals.",
 		nextLabel: "Continue",
 		spotlightSelector: '[data-tutorial="onboarding-quest"]',
 	},
@@ -38,18 +38,18 @@ export const GOALS_CREATE_STEP: TutorialStepDef = {
 	id: "goals_create",
 	path: "/goals",
 	kind: "goal_created",
-	title: "Training programs",
-	body: "The **Training** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Tap **Add program** (or **Add your first program**), fill the form, and submit — this step advances automatically when your program is created.",
+	title: "Goals",
+	body: "The **Goals** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Tap **Add program** (or **Add your first program**), fill the form, and submit — this step advances automatically when your program is created.",
 	spotlightSelector: '[data-tutorial="add-goal"]',
 };
 
-/** Shown when replaying the tour — introduces Training without creating a program. */
+/** Shown when replaying the tour — introduces Goals without creating a program. */
 export const TRAINING_INTRO_STEP: TutorialStepDef = {
 	id: "training_intro",
 	path: "/goals",
 	kind: "next",
-	title: "Training programs",
-	body: "The **Training** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Use **Add program** when you want to build or extend a plan — this tour only introduces the page. Tap **Next** to continue.",
+	title: "Goals",
+	body: "The **Goals** page is where you create and manage fitness programs. Each program powers generated quests and XP on your board. Use **Add program** when you want to build or extend a plan — this tour only introduces the page. Tap **Next** to continue.",
 	nextLabel: "Next",
 	spotlightSelector: '[data-tutorial="training-page"]',
 };
@@ -173,7 +173,7 @@ function applyReplaySubstitutions(step: TutorialStepDef, hasGoals: boolean): Tut
 	return step;
 }
 
-/** Training-page step where the user must create a program before advancing. */
+/** Goals-page step where the user must create a program before advancing. */
 export function stepRequiresProgramCreation(step: TutorialStepDef): boolean {
 	return step.path === "/goals" && (step.kind === "goal_created" || step.id === "goals_create");
 }

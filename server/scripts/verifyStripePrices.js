@@ -21,13 +21,11 @@ if (!key) {
 const mode = key.startsWith("sk_live_") ? "live" : key.startsWith("sk_test_") ? "test" : "unknown";
 const stripe = new Stripe(key);
 
-let failed = false;
-for (const tier of PAID_TIER_IDS) {
-	const priceId = getStripePriceIdForTier(tier);
+/** @param {string} label @param {string | undefined} priceId */
+async function verifyPrice(label, priceId) {
 	if (!priceId) {
-		console.error(`[${tier}] Missing env STRIPE_PRICE_${tier.toUpperCase()}`);
-		failed = true;
-		continue;
+		console.error(`[${label}] Missing env`);
+		return false;
 	}
 	try {
 		const price = await stripe.prices.retrieve(priceId);
@@ -36,17 +34,30 @@ for (const tier of PAID_TIER_IDS) {
 			price.unit_amount != null
 				? `${(price.unit_amount / 100).toFixed(2)} ${String(price.currency || "").toUpperCase()}`
 				: "(custom amount)";
-		console.log(`[${tier}] OK  ${priceId}  ${amount}  ${active}  recurring=${price.recurring?.interval || "n/a"}`);
+		console.log(`[${label}] OK  ${priceId}  ${amount}  ${active}  recurring=${price.recurring?.interval || "n/a"}`);
 		if (!price.active) {
 			console.warn(`  ^ Price is inactive — reactivate in Stripe or use another price ID.`);
 		}
+		return true;
 	} catch (err) {
-		failed = true;
 		const msg = err instanceof Error ? err.message : String(err);
-		console.error(`[${tier}] FAIL ${priceId}`);
+		console.error(`[${label}] FAIL ${priceId}`);
 		console.error(`  ${msg}`);
+		return false;
 	}
 }
+
+let failed = false;
+	for (const tier of PAID_TIER_IDS) {
+		const monthlyOk = await verifyPrice(`${tier} monthly`, getStripePriceIdForTier(tier, "month"));
+		if (!monthlyOk) failed = true;
+		const annualOk = await verifyPrice(`${tier} annual`, getStripePriceIdForTier(tier, "year"));
+		if (!annualOk) {
+			console.warn(
+				`  ^ Annual checkout for ${tier} will be unavailable until STRIPE_PRICE_${tier.toUpperCase()}_ANNUAL is set.`,
+			);
+		}
+	}
 
 console.log("");
 console.log(`STRIPE_SECRET_KEY mode: ${mode}`);

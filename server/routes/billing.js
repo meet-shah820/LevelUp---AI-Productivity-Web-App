@@ -5,9 +5,14 @@ import { getStripe } from "../services/stripeClient.js";
 import { resolveStripeCustomerIdForUser, syncUserFromSubscription } from "../services/billingSync.js";
 import {
 	PAID_TIER_IDS,
+	ANNUAL_TRIAL_DAYS,
+	annualDiscountPercent,
+	annualSavingsCents,
 	getStripePriceIdForTier,
-	TIER_CATALOG,
+	stripeAnnualPricesConfigured,
 	stripePricesConfigured,
+	tierSupportsAnnualBilling,
+	TIER_CATALOG,
 } from "../constants/billingPlans.js";
 
 const router = express.Router();
@@ -133,49 +138,97 @@ async function computeStripeCheckoutOk(stripe) {
 
 /**
  * @param {import("stripe").Stripe | null} stripe
- * @param {string} tierId
+ * @param {string | undefined} priceId
+ * @param {number} fallbackCents
  */
-async function resolveTierPricingFromStripe(stripe, tierId) {
-	const fallback = TIER_CATALOG.find((t) => t.id === tierId);
-	const fallbackCents = fallback?.monthlyPriceCents ?? 0;
-	const priceId = getStripePriceIdForTier(tierId);
-
-	if (!stripe || !priceId || tierId === "free") {
+async function resolveStripePriceAmount(stripe, priceId, fallbackCents) {
+	if (!stripe || !priceId) {
 		return {
-			monthlyPriceCents: tierId === "free" ? 0 : fallbackCents,
+			amount: fallbackCents,
+			reachable: false,
 			currency: "usd",
-			pricingSource: "fallback",
-			stripePriceReachable: false,
+			source: "fallback",
 		};
 	}
-
 	try {
 		const price = await stripe.prices.retrieve(priceId);
+		const currency = (price.currency || "usd").toLowerCase();
 		if (price.unit_amount == null) {
 			return {
-				monthlyPriceCents: fallbackCents,
-				currency: (price.currency || "usd").toLowerCase(),
-				pricingSource: "fallback",
-				stripePriceReachable: true,
+				amount: fallbackCents,
+				reachable: true,
+				currency,
+				source: "fallback",
 			};
 		}
 		return {
-			monthlyPriceCents: price.unit_amount,
-			currency: (price.currency || "usd").toLowerCase(),
-			pricingSource: "stripe",
-			stripePriceReachable: true,
+			amount: price.unit_amount,
+			reachable: true,
+			currency,
+			source: "stripe",
 		};
 	} catch (err) {
 		const hint = readableStripeError(err) || (err instanceof Error ? err.message : "");
 		// eslint-disable-next-line no-console
-		console.warn(`[billing] price retrieve failed tier=${tierId} id=${priceId}:`, hint);
+		console.warn(`[billing] price retrieve failed id=${priceId}:`, hint);
 		return {
-			monthlyPriceCents: fallbackCents,
+			amount: fallbackCents,
+			reachable: false,
 			currency: "usd",
-			pricingSource: "fallback",
-			stripePriceReachable: false,
+			source: "fallback",
 		};
 	}
+}
+
+/**
+ * @param {import("stripe").Stripe | null} stripe
+ * @param {string} tierId
+ */
+async function resolveTierPricingFromStripe(stripe, tierId) {
+	const fallback = TIER_CATALOG.find((t) => t.id === tierId);
+	const fallbackMonthlyCents = fallback?.monthlyPriceCents ?? 0;
+	const fallbackAnnualCents = fallback?.annualPriceCents ?? 0;
+
+	if (tierId === "free") {
+		return {
+			monthlyPriceCents: 0,
+			annualPriceCents: 0,
+			annualDiscountPercent: 0,
+			currency: "usd",
+			pricingSource: "stripe",
+			stripePriceReachable: true,
+			stripeAnnualPriceReachable: true,
+		};
+	}
+
+	const monthly = await resolveStripePriceAmount(
+		stripe,
+		getStripePriceIdForTier(tierId, "month"),
+		fallbackMonthlyCents
+	);
+	const supportsAnnual = tierSupportsAnnualBilling(tierId);
+	const annual = supportsAnnual
+		? await resolveStripePriceAmount(
+				stripe,
+				getStripePriceIdForTier(tierId, "year"),
+				fallbackAnnualCents
+			)
+		: {
+				amount: 0,
+				reachable: true,
+				currency: monthly.currency,
+				source: "fallback",
+			};
+
+	return {
+		monthlyPriceCents: monthly.amount,
+		annualPriceCents: annual.amount,
+		annualDiscountPercent: annualDiscountPercent(monthly.amount, annual.amount),
+		currency: monthly.currency,
+		pricingSource: monthly.source === "stripe" || annual.source === "stripe" ? "stripe" : "fallback",
+		stripePriceReachable: monthly.reachable,
+		stripeAnnualPriceReachable: !supportsAnnual || annual.reachable,
+	};
 }
 
 // GET /api/billing/plans — catalog; paid amounts/currency match Stripe Price objects when configured
@@ -188,22 +241,39 @@ router.get("/plans", async (_req, res) => {
 					return {
 						...t,
 						monthlyPriceCents: 0,
+						annualPriceCents: 0,
+						annualDiscountPercent: 0,
+						annualTrialDays: 0,
+						supportsAnnual: false,
 						currency: "usd",
 						pricingSource: "stripe",
 						stripeConfigured: true,
 						hasPriceId: false,
+						hasAnnualPriceId: false,
 						stripePriceReachable: true,
+						stripeAnnualPriceReachable: true,
 					};
 				}
 				const pricing = await resolveTierPricingFromStripe(stripe, t.id);
+				const supportsAnnual = tierSupportsAnnualBilling(t.id);
+				const annualPriceId = supportsAnnual ? getStripePriceIdForTier(t.id, "year") : "";
 				return {
 					...t,
 					monthlyPriceCents: pricing.monthlyPriceCents,
+					annualPriceCents: pricing.annualPriceCents,
+					annualDiscountPercent: pricing.annualDiscountPercent,
+					annualSavingsCents: annualSavingsCents(pricing.monthlyPriceCents, pricing.annualPriceCents),
+					compareAtMonthlyPriceCents: t.compareAtMonthlyPriceCents ?? null,
+					pricingNote: t.pricingNote ?? null,
+					annualTrialDays: supportsAnnual ? ANNUAL_TRIAL_DAYS : 0,
+					supportsAnnual,
 					currency: pricing.currency,
 					pricingSource: pricing.pricingSource,
 					stripeConfigured: stripePricesConfigured(),
-					hasPriceId: Boolean(getStripePriceIdForTier(t.id)),
+					hasPriceId: Boolean(getStripePriceIdForTier(t.id, "month")),
+					hasAnnualPriceId: Boolean(annualPriceId),
 					stripePriceReachable: pricing.stripePriceReachable,
+					stripeAnnualPriceReachable: pricing.stripeAnnualPriceReachable,
 				};
 			}),
 		);
@@ -211,14 +281,27 @@ router.get("/plans", async (_req, res) => {
 			Boolean(stripe) &&
 			stripePricesConfigured() &&
 			tiers.filter((x) => x.id !== "free").every((x) => x.stripePriceReachable === true);
+		const annualCheckoutAvailable =
+			checkoutAvailable &&
+			stripeAnnualPricesConfigured() &&
+			tiers
+				.filter((x) => x.supportsAnnual)
+				.every((x) => x.stripeAnnualPriceReachable === true);
 		setCheckoutOkCache(checkoutAvailable);
 		const plansNotice =
 			Boolean(stripe) && stripePricesConfigured() && !checkoutAvailable
 				? "Price IDs are set, but this server's STRIPE_SECRET_KEY cannot load them — use the same Stripe account and Test/Live mode for the secret key and every STRIPE_PRICE_* (set all in Render; redeploy after changes)."
-				: null;
+				: Boolean(stripe) &&
+					  stripePricesConfigured() &&
+					  checkoutAvailable &&
+					  !annualCheckoutAvailable
+					? "Monthly checkout works. Set STRIPE_PRICE_*_ANNUAL for all paid tiers (run npm run stripe:bootstrap) to enable annual billing with 14-day trial."
+					: null;
 		return res.json({
 			tiers,
 			checkoutAvailable,
+			annualCheckoutAvailable,
+			annualTrialDays: ANNUAL_TRIAL_DAYS,
 			plansNotice,
 		});
 	} catch (e) {
@@ -334,20 +417,45 @@ router.post("/checkout-session", requireAuth, async (req, res) => {
 	}
 
 	const tier = typeof req.body?.tier === "string" ? req.body.tier.trim() : "";
+	const intervalRaw = typeof req.body?.interval === "string" ? req.body.interval.trim().toLowerCase() : "month";
+	const interval = intervalRaw === "year" ? "year" : "month";
 	if (!PAID_TIER_IDS.includes(tier)) {
 		return res.status(400).json({ error: "Invalid tier. Choose starter, pro, or elite." });
 	}
-
-	const priceId = getStripePriceIdForTier(tier);
-	if (!priceId) {
-		return res.status(503).json({ error: "Missing Stripe Price ID for this tier." });
+	if (interval === "year" && !tierSupportsAnnualBilling(tier)) {
+		return res.status(400).json({ error: "Annual billing is available for Pro and Elite only." });
 	}
 
-	if (!(await computeStripeCheckoutOk(stripe))) {
+	const priceId = getStripePriceIdForTier(tier, interval);
+	if (!priceId) {
+		return res.status(503).json({
+			error:
+				interval === "year"
+					? "Missing Stripe annual Price ID for this tier."
+					: "Missing Stripe Price ID for this tier.",
+		});
+	}
+
+	if (interval === "month" && !(await computeStripeCheckoutOk(stripe))) {
 		return res.status(503).json({
 			error:
 				"Checkout is unavailable: STRIPE_SECRET_KEY cannot load your Price IDs. Use the same Stripe account and Test/Live mode for the secret key and all STRIPE_PRICE_* variables (see Render Environment).",
 		});
+	}
+
+	if (interval === "year") {
+		if (!stripeAnnualPricesConfigured()) {
+			return res.status(503).json({
+				error: "Annual checkout is not configured. Set STRIPE_PRICE_*_ANNUAL for starter, pro, and elite.",
+			});
+		}
+		try {
+			await stripe.prices.retrieve(priceId);
+		} catch {
+			return res.status(503).json({
+				error: "Annual checkout is unavailable: STRIPE_SECRET_KEY cannot load the annual Price ID for this tier.",
+			});
+		}
 	}
 
 	try {
@@ -375,13 +483,19 @@ router.post("/checkout-session", requireAuth, async (req, res) => {
 			success_url: successUrl,
 			cancel_url: cancelUrl,
 			client_reference_id: String(user._id),
-			metadata: { userId: String(user._id), tier },
+			metadata: { userId: String(user._id), tier, interval },
 			subscription_data: {
-				metadata: { userId: String(user._id), tier },
+				metadata: { userId: String(user._id), tier, interval },
+				...(interval === "year" && tierSupportsAnnualBilling(tier)
+					? { trial_period_days: ANNUAL_TRIAL_DAYS }
+					: {}),
 			},
 			custom_text: {
 				submit: {
-					message: `By subscribing you agree to LevelUp Terms of Service (${termsUrl}) and Privacy Policy (${privacyUrl}). Payments are processed by Stripe; refunds follow our Terms. Stripe's policies also apply at checkout.`,
+					message:
+						interval === "year" && tierSupportsAnnualBilling(tier)
+							? `By subscribing you agree to LevelUp Terms of Service (${termsUrl}) and Privacy Policy (${privacyUrl}). Your annual plan includes a ${ANNUAL_TRIAL_DAYS}-day free trial; billing starts after the trial unless you cancel. Payments are processed by Stripe; refunds follow our Terms. Stripe's policies also apply at checkout.`
+							: `By subscribing you agree to LevelUp Terms of Service (${termsUrl}) and Privacy Policy (${privacyUrl}). Payments are processed by Stripe; refunds follow our Terms. Stripe's policies also apply at checkout.`,
 				},
 			},
 		};
@@ -395,7 +509,7 @@ router.post("/checkout-session", requireAuth, async (req, res) => {
 
 		// Include priceId so changing STRIPE_PRICE_* env vars does not replay an old Stripe idempotent
 		// response (same user+tier used to pin deleted prices and broke Checkout for existing accounts).
-		const baseIdempotencyKey = `checkout_${user._id}_${tier}_${priceId}`;
+		const baseIdempotencyKey = `checkout_${user._id}_${tier}_${interval}_${priceId}`;
 
 		let session;
 		try {
