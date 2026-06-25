@@ -17,6 +17,10 @@ const QuestSchema = new mongoose.Schema(
 		type: { type: String, enum: ["daily", "weekly", "monthly"], default: "daily" },
 		/** Effort / time to complete — independent of timeframe (Gemini-assigned). */
 		difficulty: { type: String, enum: ["easy", "medium", "hard"], default: "medium" },
+		/** Dynamic roll: completing this quest grants +1 streak freeze. */
+		awardsStreakFreeze: { type: Boolean, default: false },
+		/** Whether dynamic streak-freeze assignment has been rolled for this quest. */
+		streakFreezeRollDone: { type: Boolean, default: false },
 		date: { type: Date, default: () => new Date() },
 		/** Legacy — no longer used for gating (quests do not expire). */
 		expiresAt: { type: Date, default: null, index: true },

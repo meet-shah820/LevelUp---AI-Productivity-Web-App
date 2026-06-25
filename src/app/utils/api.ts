@@ -688,6 +688,20 @@ export type StreakCalendarDay = {
 	date: string;
 	completedCount: number;
 	hasCompletion: boolean;
+	streakFrozen?: boolean;
+	countsForStreak?: boolean;
+};
+
+export type StreakFreezeStatus = {
+	available: number;
+	earnProfile?: "hard_grind" | "cadence" | "milestone";
+	earnProfileLabel?: string;
+	upcomingQuestRewards?: {
+		id: string;
+		title: string;
+		type: string;
+		difficulty: string;
+	}[];
 };
 
 export type StreakCalendarResponse = {
@@ -695,6 +709,7 @@ export type StreakCalendarResponse = {
 	days: StreakCalendarDay[];
 	currentStreak: { length: number; start: string | null; end: string | null };
 	longestStreak: { length: number; start: string | null; end: string | null };
+	streakFreeze?: StreakFreezeStatus;
 };
 
 export async function getStreakCalendar(fromISO?: string, toISO?: string): Promise<StreakCalendarResponse> {

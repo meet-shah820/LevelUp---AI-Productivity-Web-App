@@ -5,6 +5,8 @@ import { buildStoredPenaltyForQuest } from "../utils/questPenalty.js";
 import { startOfDay, endOfDay } from "../utils/timeframePeriod.js";
 import { BRIEFING_SCHEMA_VERSION } from "../constants/questBriefing.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
+import { reconcileStreakFreezes, buildStreakFreezePublic } from "./streakFreeze.js";
+import { rollQuestStreakFreezeAward } from "./streakFreezeRewards.js";
 
 const COMEBACK_ABSENCE_MS = 7 * 24 * 60 * 60 * 1000;
 const UNDERDOG_MS = 2 * 24 * 60 * 60 * 1000;
@@ -30,6 +32,7 @@ export async function refreshUserEngagement(user) {
 	}
 	user.lastAppOpenAt = now;
 	await user.save();
+	await reconcileStreakFreezes(user);
 }
 
 function addLocalDays(d, deltaDays) {
@@ -271,6 +274,14 @@ export async function ensureStreakSaverQuest(user) {
 		expiresAt: null,
 		isExpired: false,
 		questTag: "streak_saver",
+		streakFreezeRollDone: true,
+		awardsStreakFreeze: rollQuestStreakFreezeAward(userId, {
+			type: "daily",
+			difficulty: "easy",
+			date,
+			title: "Streak Saver — One Small Win",
+			goalId: goal._id,
+		}),
 		penalty: {
 			title: p.title,
 			summary: p.summary,
@@ -285,7 +296,7 @@ export async function ensureStreakSaverQuest(user) {
 	});
 }
 
-export function buildEngagementPublic(user) {
+export async function buildEngagementPublic(user) {
 	const now = Date.now();
 	const until = user.leaderboardUnderdogUntil;
 	const untilMs = until instanceof Date && !Number.isNaN(until.getTime()) ? until.getTime() : 0;
@@ -299,5 +310,6 @@ export function buildEngagementPublic(user) {
 		leaderboardUnderdogEndsAt: leaderboardUnderdogActive && until instanceof Date ? until.toISOString() : null,
 		easyModeTier: ez,
 		easyModeActive: ez > 0,
+		streakFreeze: await buildStreakFreezePublic(user),
 	};
 }

@@ -30,6 +30,10 @@ function clientQuestTag(q) {
 	return "standard";
 }
 
+function streakFreezeClientFields(q) {
+	return { awardsStreakFreeze: !!q.awardsStreakFreeze };
+}
+
 /**
  * @param {Record<string, unknown>} q — lean or doc quest
  * @param {{ comebackBonusQuestsRemaining?: number; easyModeTier?: number }} [opts]
@@ -61,6 +65,7 @@ export function mapQuestToClientResponse(q, opts = {}) {
 			questTag: tag,
 			comebackBoostApplies: false,
 			easyModeTier: easyTier,
+			...streakFreezeClientFields(q),
 		};
 	}
 
@@ -82,6 +87,7 @@ export function mapQuestToClientResponse(q, opts = {}) {
 			questTag: tag,
 			comebackBoostApplies: comebackRemaining > 0,
 			easyModeTier: easyTier,
+			...streakFreezeClientFields(q),
 		};
 	}
 
@@ -103,6 +109,7 @@ export function mapQuestToClientResponse(q, opts = {}) {
 			questTag: tag,
 			comebackBoostApplies: comebackRemaining > 0,
 			easyModeTier: easyTier,
+			...streakFreezeClientFields(q),
 		};
 	}
 
@@ -125,5 +132,6 @@ export function mapQuestToClientResponse(q, opts = {}) {
 		questTag: tag,
 		comebackBoostApplies: comebackRemaining > 0,
 		easyModeTier: easyTier,
+		...streakFreezeClientFields(q),
 	};
 }

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Calendar, ChevronLeft, ChevronRight, Flame } from "lucide-react";
-import { getStreakCalendar, type StreakCalendarDay } from "../utils/api";
+import { Calendar, ChevronLeft, ChevronRight, Flame, Snowflake } from "lucide-react";
+import { getStreakCalendar, type StreakCalendarDay, type StreakFreezeStatus } from "../utils/api";
 import { motion } from "motion/react";
 
 function formatMonthYear(d: Date): string {
@@ -45,6 +45,7 @@ export default function Streak() {
 		start: null,
 		end: null,
 	});
+	const [streakFreeze, setStreakFreeze] = useState<StreakFreezeStatus | null>(null);
 
 	useEffect(() => {
 		let mounted = true;
@@ -59,6 +60,7 @@ export default function Streak() {
 				setDays(res.days || []);
 				setCurrentStreak(res.currentStreak || { length: 0, start: null, end: null });
 				setLongestStreak(res.longestStreak || { length: 0, start: null, end: null });
+				setStreakFreeze(res.streakFreeze ?? null);
 			} catch {
 				if (mounted) setError("Failed to load streak calendar");
 			} finally {
@@ -110,6 +112,10 @@ export default function Streak() {
 		return dateISO >= currentStreak.start && dateISO <= currentStreak.end;
 	}
 
+	function dayCountsForStreak(info?: StreakCalendarDay): boolean {
+		return !!info?.countsForStreak || !!info?.hasCompletion || !!info?.streakFrozen;
+	}
+
 	function isInLongestStreak(dateISO: string): boolean {
 		if (!longestStreak.start || !longestStreak.end) return false;
 		return dateISO >= longestStreak.start && dateISO <= longestStreak.end;
@@ -139,6 +145,10 @@ export default function Streak() {
 						<div className="flex items-center gap-2">
 							<span className="inline-block w-3 h-3 rounded-sm bg-emerald-500/70" />
 							<span className="text-gray-300">Completed</span>
+						</div>
+						<div className="flex items-center gap-2">
+							<span className="inline-block w-3 h-3 rounded-sm bg-cyan-500/50" />
+							<span className="text-gray-300">Freeze</span>
 						</div>
 						<div className="flex items-center gap-2">
 							<span className="inline-block w-3 h-3 rounded-sm bg-indigo-500/60" />
@@ -173,6 +183,10 @@ export default function Streak() {
 							<span className="text-gray-300">Completed</span>
 						</div>
 						<div className="flex items-center gap-2">
+							<span className="inline-block w-3 h-3 rounded-sm bg-cyan-500/50" />
+							<span className="text-gray-300">Freeze</span>
+						</div>
+						<div className="flex items-center gap-2">
 							<span className="inline-block w-3 h-3 rounded-sm bg-indigo-500/60" />
 							<span className="text-gray-300">Streak</span>
 						</div>
@@ -195,11 +209,17 @@ export default function Streak() {
 						const iso = ymd(cell.date);
 						const info = cell.info;
 						const completed = !!info?.hasCompletion;
-						const inCurrent = completed && isInCurrentStreak(iso);
-						const inLongest = completed && isInLongestStreak(iso);
+						const frozen = !!info?.streakFrozen && !completed;
+						const countsForStreak = dayCountsForStreak(info);
+						const inCurrent = countsForStreak && isInCurrentStreak(iso);
+						const inLongest = countsForStreak && isInLongestStreak(iso);
 						const isToday = iso === ymd(new Date());
-						const base = "h-12 rounded-md flex items-center justify-center text-sm transition-all";
-						const heat = completed ? intensityClass(info?.completedCount || 1) : "bg-white/5 border-purple-500/10";
+						const base = "h-12 rounded-md flex items-center justify-center text-sm transition-all relative";
+						const heat = completed
+							? intensityClass(info?.completedCount || 1)
+							: frozen
+								? "bg-cyan-500/25 border-cyan-400/40"
+								: "bg-white/5 border-purple-500/10";
 						const streakOverlay = inCurrent
 							? "ring-2 ring-indigo-400/70"
 							: inLongest
@@ -216,10 +236,15 @@ export default function Streak() {
 								title={
 									completed
 										? `${iso}: ${info?.completedCount || 1} completion${(info?.completedCount || 1) > 1 ? "s" : ""}`
-										: iso
+										: frozen
+											? `${iso}: streak freeze applied`
+											: iso
 								}
 							>
-								<span className={completed ? "text-white" : "text-gray-400"}>{cell.date.getDate()}</span>
+								{frozen ? (
+									<Snowflake className="w-3.5 h-3.5 text-cyan-200 absolute top-1 right-1 opacity-80" aria-hidden />
+								) : null}
+								<span className={completed || frozen ? "text-white" : "text-gray-400"}>{cell.date.getDate()}</span>
 							</motion.div>
 						);
 					})}
@@ -232,7 +257,7 @@ export default function Streak() {
 					<Flame className="w-4 h-4 text-orange-400" />
 					<div className="text-white font-semibold">Streaks</div>
 				</div>
-				<div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+				<div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
 					<div className="p-3 rounded-lg bg-white/5 border border-purple-500/10">
 						<div className="text-gray-400">Current streak</div>
 						<div className="flex items-center gap-2">
@@ -253,6 +278,23 @@ export default function Streak() {
 						</div>
 					</div>
 					<div className="p-3 rounded-lg bg-white/5 border border-purple-500/10">
+						<div className="text-gray-400">Streak freezes</div>
+						<div className="flex items-center gap-2">
+							<Snowflake className="w-4 h-4 text-cyan-300" aria-hidden />
+							<div className="text-white text-lg font-semibold tabular-nums">
+								{streakFreeze?.available ?? 0}
+							</div>
+						</div>
+						<div className="text-xs text-gray-500">
+							{streakFreeze?.earnProfileLabel
+								? `Earn via ${streakFreeze.earnProfileLabel.toLowerCase()}`
+								: "Earn from quests & achievements"}
+							{(streakFreeze?.upcomingQuestRewards?.length ?? 0) > 0
+								? ` · next: ${streakFreeze?.upcomingQuestRewards?.[0]?.title}`
+								: ""}
+						</div>
+					</div>
+					<div className="p-3 rounded-lg bg-white/5 border border-purple-500/10">
 						<div className="text-gray-400">This month</div>
 						<div className="text-white text-lg font-semibold">
 							{days.filter((d) => d.hasCompletion).length} days completed
@@ -260,7 +302,7 @@ export default function Streak() {
 					</div>
 				</div>
 				<div className="relative z-10 mt-4 text-[11px] text-gray-500">
-					Tip: Keep your streak alive by completing at least one quest or focus session per day.
+					Tip: Complete at least one quest or focus session per day. Miss a day or two? Freezes auto-apply when you return. Earn them from flagged quests (daily, weekly, or monthly) or achievements — which path you get depends on your hunter profile.
 				</div>
 			</Card>
 		</div>

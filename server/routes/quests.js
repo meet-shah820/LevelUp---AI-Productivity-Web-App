@@ -26,6 +26,12 @@ import {
 	ensureStreakSaverQuest,
 	buildEngagementPublic,
 } from "../services/engagementMechanics.js";
+import {
+	maybeAwardQuestCompletionFreeze,
+	buildStreakFreezePublic,
+	reconcileStreakFreezes,
+} from "../services/streakFreeze.js";
+import { ensureOpenQuestStreakFreezeAssignments } from "../services/streakFreezeRewards.js";
 import { buildQuestExerciseItemList, mergeExerciseProgress } from "../services/questExerciseItems.js";
 import {
 	startOfDay,
@@ -152,7 +158,8 @@ router.get("/", async (req, res) => {
 			await ensureRecoveryQuest(user);
 			await ensureStreakSaverQuest(user);
 		}
-		const engagement = buildEngagementPublic(user);
+		await ensureOpenQuestStreakFreezeAssignments(userId);
+		const engagement = await buildEngagementPublic(user);
 		const cr = engagement.comebackBonusQuestsRemaining;
 		const ez = engagement.easyModeTier;
 		let filter = { userId, type: timeframe };
@@ -530,6 +537,8 @@ router.patch("/:id/complete", async (req, res) => {
 			return res.status(500).json({ error: "User not found for quest" });
 		}
 
+		await reconcileStreakFreezes(user);
+
 		const difficulty = String(quest.difficulty || "medium").toLowerCase();
 		const timerEligible = difficulty === "medium" || difficulty === "hard";
 		const baseXpReward = Number(quest.xpReward) || 0;
@@ -684,6 +693,7 @@ router.patch("/:id/complete", async (req, res) => {
 		]);
 		const focusHours = (focusXp?.[0]?.total || 0) / (9 * 60);
 		const newlyUnlockedIds = await evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours });
+		const streakFreezesEarned = await maybeAwardQuestCompletionFreeze(user, quest);
 		const allQuestsComplete = await didJustCompleteAllQuestTimeframes(user._id, quest._id);
 
 		const rank = await recalculateAndSaveUserRank(user._id, {
@@ -700,6 +710,8 @@ router.patch("/:id/complete", async (req, res) => {
 			comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining ?? 0,
 			easyModeTier: user.easyModeTier ?? 0,
 			newlyUnlockedAchievements: achievementsForClient(newlyUnlockedIds),
+			streakFreeze: await buildStreakFreezePublic(user),
+			streakFreezesEarned,
 			allQuestsComplete,
 			user: {
 				level: user.level,

@@ -6,6 +6,7 @@ import { calculateLevelFromXp } from "../utils/level.js";
 import { getUserForReq } from "../utils/demoUser.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
 import { mapQuestToClientResponse } from "../utils/questClientView.js";
+import { buildStreakFreezePublic } from "../services/streakFreeze.js";
 
 const router = express.Router();
 
@@ -71,6 +72,8 @@ router.get("/", async (req, res) => {
 
 		const activityStreak = await computeActivityStreakDays(user._id);
 
+		const streakFreeze = await buildStreakFreezePublic(user);
+
 		let xpVsYesterdayPercent = null;
 		if (yesterdayBuckets.totalXp > 0) {
 			xpVsYesterdayPercent = Math.round(
@@ -93,6 +96,7 @@ router.get("/", async (req, res) => {
 				rank: user.rank || "E",
 				nextLevelXp: Math.pow(user.level, 2) * 100, // inverse of given formula
 			},
+			streakFreeze,
 			quests: todaysQuests.map((q) =>
 				mapQuestToClientResponse(q, {
 					comebackBonusQuestsRemaining: user.comebackBonusQuestsRemaining || 0,

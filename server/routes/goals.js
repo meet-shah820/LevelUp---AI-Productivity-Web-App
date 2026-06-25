@@ -26,6 +26,7 @@ import {
 import { computeCurrentRotationMovementRows } from "../services/programModulesRotation.js";
 import { assessGoalFitnessRelevance } from "../services/goalTopicGate.js";
 import { buildAiQuestPlanContext } from "../services/questPlanContext.js";
+import { applyDynamicStreakFreezeFlags } from "../services/streakFreezeRewards.js";
 import { billingTierRank, meetsMinTierWithReq, adminPreviewBypassActive } from "../utils/billingTier.js";
 
 const router = express.Router();
@@ -645,6 +646,8 @@ async function buildQuestDocumentsFromPlan(
 		targetQuestCount,
 		supplementCtx
 	);
+
+	applyDynamicStreakFreezeFlags(questsToInsert, userId);
 
 	return questsToInsert;
 }

@@ -12,6 +12,7 @@ import {
   Clock,
   Award,
   Calendar,
+  Snowflake,
 } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
@@ -102,10 +103,16 @@ export default function Dashboard() {
     { id: string; type: "quest" | "level" | "achievement" | "focus"; message: string; xp?: number; at: string }[]
   >([]);
 
-  const [streakCard, setStreakCard] = useState<{ current: number; best: number; daysThisWeek: boolean[] }>({
+  const [streakCard, setStreakCard] = useState<{
+    current: number;
+    best: number;
+    daysThisWeek: boolean[];
+    freezesAvailable: number;
+  }>({
     current: 0,
     best: 0,
     daysThisWeek: [false, false, false, false, false, false, false],
+    freezesAvailable: 0,
   });
 
   const [leveledUp, setLeveledUp] = useState(false);
@@ -163,13 +170,16 @@ export default function Dashboard() {
         const weekStart = startOfWeekMonday(now);
         const weekEnd = addDays(weekStart, 6);
         const sc = await getStreakCalendar(ymd(weekStart), ymd(weekEnd));
-        const map = new Map((sc.days || []).map((d) => [d.date, !!d.hasCompletion]));
+        const map = new Map(
+          (sc.days || []).map((d) => [d.date, !!(d.countsForStreak ?? d.hasCompletion ?? d.streakFrozen)])
+        );
         const daysThisWeek = Array.from({ length: 7 }, (_, i) => map.get(ymd(addDays(weekStart, i))) === true);
         if (mounted) {
           setStreakCard({
             current: sc.currentStreak?.length ?? 0,
             best: sc.longestStreak?.length ?? 0,
             daysThisWeek,
+            freezesAvailable: sc.streakFreeze?.available ?? 0,
           });
         }
       } catch {
@@ -566,6 +576,10 @@ export default function Dashboard() {
                   <p className="text-5xl font-bold text-white mb-2">{streakCard.current}</p>
                   <p className="text-sm text-gray-400">Days in a row</p>
                   <p className="text-xs text-orange-400 mt-2">Best: {streakCard.best} days</p>
+                  <p className="text-xs text-cyan-300/90 mt-1 flex items-center justify-center gap-1">
+                    <Snowflake className="w-3 h-3" aria-hidden />
+                    {streakCard.freezesAvailable} freeze{streakCard.freezesAvailable === 1 ? "" : "s"} banked
+                  </p>
                 </div>
                 <div className="flex justify-between gap-1 mt-4">
                   {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => (

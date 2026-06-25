@@ -35,6 +35,7 @@ export async function resetUserProgress(userId) {
 				streak: 0,
 				rank: "E",
 				stats: { strength: 0, intelligence: 0, agility: 0, vitality: 0 },
+				streakFreezesAvailable: 0,
 			},
 		}
 	);

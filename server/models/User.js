@@ -39,6 +39,8 @@ const UserSchema = new mongoose.Schema(
 		rank: { type: String, enum: ["E", "D", "C", "B", "A", "S"], default: "E" },
 		stats: { type: StatsSchema, default: () => ({}) },
 		streak: { type: Number, default: 0 },
+		/** Banked streak freezes. Auto-applied on missed days when the user returns. */
+		streakFreezesAvailable: { type: Number, default: 0 },
 		/** Updated whenever the app resolves the current user (see `getUserForReq`). */
 		lastAppOpenAt: { type: Date, default: null },
 		/** Monday YYYY-MM-DD of the last weekly recap the user dismissed (`GET /api/weekly-report` when showModal was false). */

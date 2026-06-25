@@ -3,6 +3,7 @@ import History from "../models/History.js";
 import { ACHIEVEMENTS } from "../data/achievements.js";
 import { categoriesFromGoals, isAchievementApplicable } from "../utils/achievementAvailability.js";
 import { computeActivityStreakDays } from "../utils/activityStreak.js";
+import { maybeAwardAchievementFreeze } from "../services/streakFreeze.js";
 
 export async function evaluateAndRecordAchievements({ user, goals, questsCompleted, focusHours }) {
 	const categories = categoriesFromGoals(goals);
@@ -66,6 +67,8 @@ export async function evaluateAndRecordAchievements({ user, goals, questsComplet
 				xpChange: 0,
 				meta: { achievementId: id },
 			});
+			const def = ACHIEVEMENTS.find((a) => a.id === id);
+			await maybeAwardAchievementFreeze(user, id, def?.rarity || "common");
 		}
 	}
 

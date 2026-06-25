@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { motion } from "motion/react";
-import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen, Play, Pause, RotateCcw } from "lucide-react";
+import { Check, Clock, Zap, Target, Calendar, Filter, Signal, ChevronDown, BookOpen, Play, Pause, RotateCcw, Snowflake } from "lucide-react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -227,6 +227,12 @@ function QuestCard({
                 {quest.comebackBoostApplies && !quest.completed && (
                   <Badge className="bg-amber-500/20 text-amber-100 border-amber-500/40 text-xs">2× comeback XP</Badge>
                 )}
+                {quest.awardsStreakFreeze && !quest.completed && (
+                  <Badge className="bg-cyan-500/20 text-cyan-100 border-cyan-500/40 text-xs">
+                    <Snowflake className="w-3 h-3 mr-1" aria-hidden />
+                    Streak freeze
+                  </Badge>
+                )}
               </div>
               <h3 className={`text-lg font-bold ${quest.completed ? "text-green-400 line-through" : "text-white"}`}>
                 {displayTitle}
@@ -411,6 +417,12 @@ export default function Quests() {
     leaderboardUnderdogEndsAt?: string | null;
     easyModeTier?: number;
     easyModeActive?: boolean;
+    streakFreeze?: {
+      available: number;
+      earnProfile?: string;
+      earnProfileLabel?: string;
+      upcomingQuestRewards?: { id: string; title: string; type: string; difficulty: string }[];
+    };
   }>({
     comebackBonusQuestsRemaining: 0,
     comebackBoostActive: false,
@@ -418,6 +430,7 @@ export default function Quests() {
     leaderboardUnderdogEndsAt: null,
     easyModeTier: 0,
     easyModeActive: false,
+    streakFreeze: { available: 0, upcomingQuestRewards: [] },
   });
   const mountedRef = useRef(true);
   /** Coalesce `RANK_UPDATED_EVENT` bursts (e.g. complete + layout) into one quest refresh. */
@@ -468,6 +481,7 @@ export default function Quests() {
         questTag,
         comebackBoostApplies: !!q.comebackBoostApplies,
         easyModeTier: typeof q.easyModeTier === "number" ? q.easyModeTier : 0,
+        awardsStreakFreeze: !!q.awardsStreakFreeze,
       };
     };
     try {
@@ -490,6 +504,10 @@ export default function Quests() {
         leaderboardUnderdogEndsAt: daily.engagement?.leaderboardUnderdogEndsAt ?? null,
         easyModeTier: Number(daily.engagement?.easyModeTier) || 0,
         easyModeActive: !!daily.engagement?.easyModeActive,
+        streakFreeze: daily.engagement?.streakFreeze ?? {
+          available: 0,
+          upcomingQuestRewards: [],
+        },
       });
       const [weekly, monthly] = await Promise.all([getQuests("weekly"), getQuests("monthly")]);
       if (!mountedRef.current) return;
@@ -511,6 +529,7 @@ export default function Quests() {
         leaderboardUnderdogEndsAt: null,
         easyModeTier: 0,
         easyModeActive: false,
+        streakFreeze: { available: 0, upcomingQuestRewards: [] },
       });
     }
   }, [billingResolved, effectiveTier]);
@@ -757,6 +776,37 @@ export default function Quests() {
             You were away for more than a week. Your next{" "}
             <span className="font-bold text-white tabular-nums">{engagement.comebackBonusQuestsRemaining}</span> quest
             completions earn <span className="font-bold text-white">2×</span> base XP (daily set bonus unchanged).
+          </p>
+        </motion.div>
+      )}
+
+      {((engagement.streakFreeze?.available ?? 0) > 0 ||
+        (engagement.streakFreeze?.upcomingQuestRewards?.length ?? 0) > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-cyan-500/35 bg-gradient-to-r from-cyan-500/12 to-sky-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4"
+        >
+          <div className="flex items-center gap-2 text-cyan-100">
+            <Snowflake className="w-5 h-5 shrink-0 text-cyan-300" aria-hidden />
+            <span className="font-semibold">Streak freeze</span>
+          </div>
+          <p className="text-sm text-cyan-100/90 flex-1">
+            <span className="font-bold text-white tabular-nums">
+              {engagement.streakFreeze?.available ?? 0}
+            </span>{" "}
+            freeze{(engagement.streakFreeze?.available ?? 0) === 1 ? "" : "s"} banked — auto-applied if you miss a day or two. Your path:{" "}
+            <span className="text-white">{engagement.streakFreeze?.earnProfileLabel ?? "quests & achievements"}</span>.
+            {(engagement.streakFreeze?.upcomingQuestRewards?.length ?? 0) > 0 ? (
+              <>
+                {" "}
+                Next reward:{" "}
+                <span className="text-white font-medium">
+                  {engagement.streakFreeze?.upcomingQuestRewards?.[0]?.title}
+                </span>{" "}
+                ({engagement.streakFreeze?.upcomingQuestRewards?.[0]?.type})
+              </>
+            ) : null}
           </p>
         </motion.div>
       )}

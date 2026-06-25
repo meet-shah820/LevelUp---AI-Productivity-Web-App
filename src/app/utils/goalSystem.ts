@@ -48,6 +48,8 @@ export type Quest = {
   comebackBoostApplies?: boolean;
   /** Server: easy-mode ramp tier (post-recovery). */
   easyModeTier?: number;
+  /** Server: completing this quest grants a streak freeze. */
+  awardsStreakFreeze?: boolean;
 };
 
 export const categoryColors: Record<Goal["category"], { from: string; to: string; glow: string }> = {
