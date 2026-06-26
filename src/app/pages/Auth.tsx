@@ -87,7 +87,7 @@ export default function Auth() {
 		} else {
 			trackUserLoggedIn("email");
 		}
-		const next = consumeAuthReturnPath() || "/";
+		const next = consumeAuthReturnPath() || "/dashboard";
 		window.location.href = next;
 	};
 

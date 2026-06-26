@@ -12,6 +12,7 @@ import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
 import { AchievementShareMenu } from "../components/AchievementShareMenu";
 import { avatarInitialsFromProfile } from "../utils/avatarInitials";
+import { usernameFromDisplayName } from "../utils/usernameFromDisplayName";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -70,10 +71,11 @@ export default function Profile() {
       };
     }
     const dn = String(data.user.displayName || "").trim();
-    const un = data.user.username || "hunter";
+    const stored = data.user.username || "shadow_hunter";
+    const handle = usernameFromDisplayName(dn, stored);
     return {
       name: dn || "Player",
-      username: `@${un}`,
+      username: `@${handle}`,
       avatar: data.user.avatarDataUrl || "",
       level: data.user.level,
       currentXP: data.user.xp,
@@ -85,10 +87,11 @@ export default function Profile() {
     };
   }, [data]);
 
-  const displayInitials = useMemo(
-    () => avatarInitialsFromProfile(data?.user?.displayName, data?.user?.username),
-    [data]
-  );
+  const displayInitials = useMemo(() => {
+    const dn = data?.user?.displayName || "";
+    const stored = data?.user?.username || "shadow_hunter";
+    return avatarInitialsFromProfile(dn, usernameFromDisplayName(dn, stored));
+  }, [data]);
 
   const stats = [
     { name: "Strength", value: data?.user?.stats?.strength ?? 0, max: 100, icon: Swords, color: "from-red-500 to-orange-500" },

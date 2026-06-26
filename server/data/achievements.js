@@ -1,8 +1,8 @@
-/** Fitness training app — milestones tied to quests, XP, streaks, programs, and Hunter rank progression. */
+/** Fitness training app — milestones tied to quests, XP, streaks, goals, and Hunter rank progression. */
 export const ACHIEVEMENTS = [
-	{ id: "program_committed", name: "Program Committed", description: "Start a training program goal in the app", rarity: "common", requiredCategory: "Fitness" },
+	{ id: "program_committed", name: "Goal Committed", description: "Start a training goal in the app", rarity: "common", requiredCategory: "Fitness" },
 	{ id: "plan_snapshot", name: "Roadmap Forged", description: "Your goal has an AI-generated training roadmap snapshot", rarity: "common", requiredCategory: "Fitness" },
-	{ id: "library_grounded", name: "Evidence-Grounded", description: "Your program is grounded with open fitness-library references", rarity: "rare", requiredCategory: "Fitness" },
+	{ id: "library_grounded", name: "Evidence-Grounded", description: "Your goal is grounded with open fitness-library references", rarity: "rare", requiredCategory: "Fitness" },
 
 	{ id: "first_quest", name: "First Rep", description: "Complete your first training quest", rarity: "common", requiredCategory: "Fitness" },
 	{ id: "five_quests", name: "Early Groove", description: "Complete 5 training quests", rarity: "common", requiredCategory: "Fitness" },

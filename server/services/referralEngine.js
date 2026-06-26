@@ -5,7 +5,7 @@ import { calculateLevelFromXp } from "../utils/level.js";
 
 export const REFERRAL_MILESTONES = {
 	signup: { referrerXp: 50, refereeXp: 75, label: "Friend creates an account" },
-	first_program: { referrerXp: 100, refereeXp: 25, label: "Friend adds their first training program" },
+	first_program: { referrerXp: 100, refereeXp: 25, label: "Friend adds their first training goal" },
 	first_quest: { referrerXp: 75, refereeXp: 0, label: "Friend completes their first quest" },
 };
 

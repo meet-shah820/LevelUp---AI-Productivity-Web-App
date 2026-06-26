@@ -37,9 +37,19 @@ export async function billingWebhookHandler(req, res) {
 		return res.status(400).send("Missing stripe-signature");
 	}
 
+	if (!Buffer.isBuffer(req.body)) {
+		return res.status(400).send("Webhook requires raw request body");
+	}
+
 	let event;
 	try {
-		event = stripe.webhooks.constructEvent(req.body, sig, secret);
+		const toleranceSec = Number(process.env.STRIPE_WEBHOOK_TOLERANCE_SEC || 300);
+		event = stripe.webhooks.constructEvent(
+			req.body,
+			sig,
+			secret,
+			Number.isFinite(toleranceSec) && toleranceSec > 0 ? toleranceSec : 300,
+		);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : "Invalid payload";
 		return res.status(400).send(`Webhook Error: ${msg}`);

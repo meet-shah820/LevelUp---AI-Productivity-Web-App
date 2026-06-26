@@ -1,4 +1,4 @@
-/** Dispatched from Goals after a program is successfully created (not edit-only saves). */
+/** Dispatched from Goals after a goal is successfully created (not edit-only saves). */
 export const ONBOARDING_GOAL_CREATED = "levelup:onboarding-goal-created";
 
 /** Dispatched from Quests after the server accepts a quest completion. */

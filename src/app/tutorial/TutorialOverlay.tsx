@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { playUiClick } from "../audio/sounds";
-import { stepRequiresProgramCreation, type TutorialStepDef } from "./tutorialSteps";
+import { stepRequiresGoalCreation, type TutorialStepDef } from "./tutorialSteps";
 
 function renderBodyMarkdownish(text: string) {
 	const parts = text.split(/\*\*(.+?)\*\*/g);
@@ -28,12 +28,12 @@ export type TutorialOverlayProps = {
 	skipTour: () => void;
 };
 
-const PROGRAM_DIALOG_SELECTOR = '[data-tutorial="program-create-dialog"]';
+const GOAL_DIALOG_SELECTOR = '[data-tutorial="goal-create-dialog"]';
 const PAGE_MAIN_SELECTOR = '[data-tutorial="page-main"]';
 const OPEN_MODAL_SELECTOR = '[data-slot="dialog-content"], [data-slot="alert-dialog-content"]';
 const EDGE = 12;
 const GAP = 12;
-/** Extra breathing room between the tutorial strip and the program dialog. */
+/** Extra breathing room between the tutorial strip and the goal dialog. */
 const DIALOG_ABOVE_GAP = 20;
 const OVERLAP_PAD = 10;
 /** Matches Layout top bar `h-20` so the tutorial strip sits below it. */
@@ -199,14 +199,14 @@ function computeDesktopSlot(main: DOMRect, dlg: DOMRect): SlotPlacement | null {
 	return null;
 }
 
-function isProgramDialogVisible(): boolean {
-	const dlgEl = document.querySelector(PROGRAM_DIALOG_SELECTOR);
+function isGoalDialogVisible(): boolean {
+	const dlgEl = document.querySelector(GOAL_DIALOG_SELECTOR);
 	if (!(dlgEl instanceof HTMLElement)) return false;
 	const r = dlgEl.getBoundingClientRect();
 	return r.width > 8 && r.height > 8;
 }
 
-/** Pin the tutorial strip directly above the program dialog (mobile / fallback). */
+/** Pin the tutorial strip directly above the goal dialog (mobile / fallback). */
 function computeAboveDialogPlacement(dlg: DOMRect, panelW: number, panelH: number, vh: number): AboveDialogPlacement {
 	const vw = window.innerWidth;
 	const minTop = APP_HEADER_HEIGHT + EDGE;
@@ -245,12 +245,12 @@ function computePlacement(
 	const vh = window.innerHeight;
 	const insets = safeInsets();
 
-	const dlgEl = document.querySelector(PROGRAM_DIALOG_SELECTOR);
+	const dlgEl = document.querySelector(GOAL_DIALOG_SELECTOR);
 	const mainEl = document.querySelector(PAGE_MAIN_SELECTOR);
-	const dlgVisible = isProgramDialogVisible();
-	const programDialogOpen = dlgVisible;
+	const dlgVisible = isGoalDialogVisible();
+	const goalDialogOpen = dlgVisible;
 
-	if (programDialogOpen && dlgEl instanceof HTMLElement) {
+	if (goalDialogOpen && dlgEl instanceof HTMLElement) {
 		const dlgRect = dlgEl.getBoundingClientRect();
 		if (vw < 768) {
 			return computeAboveDialogPlacement(dlgRect, panelW, panelH, vh);
@@ -262,7 +262,7 @@ function computePlacement(
 		return computeAboveDialogPlacement(dlgRect, panelW, panelH, vh);
 	}
 
-	const includeSpotlight = !programDialogOpen;
+	const includeSpotlight = !goalDialogOpen;
 	const avoid = collectAvoidRects(spotlightRect, includeSpotlight);
 
 	const bottomMax = maxHeightForEdge("bottom", vh, insets);
@@ -275,7 +275,7 @@ function computePlacement(
 	const bottomOverlap = totalOverlap(bottomRect, avoid);
 	const topOverlap = totalOverlap(topRect, avoid);
 
-	const preferTop = programDialogOpen || (spotlightRect && spotlightRect.top > vh * 0.45);
+	const preferTop = goalDialogOpen || (spotlightRect && spotlightRect.top > vh * 0.45);
 
 	if (bottomOverlap === 0 && !preferTop) {
 		return { mode: "edge", edge: "bottom", maxHeightPx: bottomMax };
@@ -298,7 +298,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 	const navigate = useNavigate();
 	const panelRef = useRef<HTMLDivElement>(null);
 	const [placement, setPlacement] = useState<TutorialPlacement>({ mode: "edge", edge: "bottom", maxHeightPx: 320 });
-	const [programDialogOpen, setProgramDialogOpen] = useState(false);
+	const [goalDialogOpen, setGoalDialogOpen] = useState(false);
 
 	useLayoutEffect(() => {
 		if (!active) return;
@@ -308,7 +308,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 			const vw = window.innerWidth;
 			const panelW = panelEl?.offsetWidth || panelWidth(vw);
 			const panelH = panelEl?.offsetHeight || 220;
-			setProgramDialogOpen(active && isProgramDialogVisible());
+			setGoalDialogOpen(active && isGoalDialogVisible());
 			setPlacement(computePlacement(step, spotlightRect, panelW, panelH));
 		};
 
@@ -332,21 +332,21 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 		};
 	}, [active, step, spotlightRect, stepIndex]);
 
-	const dockHintOnProgramDialog = programDialogOpen;
+	const dockHintOnGoalDialog = goalDialogOpen;
 
 	const wrongPage = step.path && location.pathname !== step.path;
 
-	const requiresProgramCreation = !wrongPage && stepRequiresProgramCreation(step);
-	const showNext = step.kind === "next" || requiresProgramCreation;
-	const nextDisabled = wrongPage || programDialogOpen || requiresProgramCreation;
+	const requiresGoalCreation = !wrongPage && stepRequiresGoalCreation(step);
+	const showNext = step.kind === "next" || requiresGoalCreation;
+	const nextDisabled = wrongPage || goalDialogOpen || requiresGoalCreation;
 
 	const hint = useMemo(() => {
 		if (!wrongPage) return null;
 		return `You are on a different page. Open **${step.path}** from the sidebar, or use the button below.`;
 	}, [wrongPage, step.path]);
 
-	const showSpotlight = active && spotlightRect && !dockHintOnProgramDialog;
-	const showFullDim = active && !showSpotlight && !dockHintOnProgramDialog;
+	const showSpotlight = active && spotlightRect && !dockHintOnGoalDialog;
+	const showFullDim = active && !showSpotlight && !dockHintOnGoalDialog;
 
 	const panelClassName =
 		"pointer-events-auto w-full min-w-0 rounded-2xl border border-purple-500/35 bg-[#0f1424]/95 backdrop-blur-md shadow-2xl shadow-black/50 p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto overflow-x-hidden max-w-[min(32rem,calc(100vw-1.25rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]";
@@ -430,7 +430,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 									navigate(step.path);
 								}}
 							>
-								Go to {step.path === "/" ? "Dashboard" : step.path}
+								Go to {step.path === "/dashboard" ? "Dashboard" : step.path}
 							</Button>
 						) : null}
 						{showNext ? (
@@ -449,7 +449,7 @@ export function TutorialOverlay({ active, step, stepIndex, stepCount, spotlightR
 							<p className="text-xs text-white/45 sm:text-right flex-1">
 								{step.kind === "quest_completed"
 									? "Waiting for a quest completion…"
-									: "Waiting for you to create a program…"}
+									: "Waiting for you to create a goal…"}
 							</p>
 						)}
 					</div>

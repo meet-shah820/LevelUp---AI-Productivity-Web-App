@@ -24,7 +24,7 @@ export default function AuthCallback() {
 			trackUserLoggedIn("google");
 		}
 		void tryClaimPendingReferral().finally(() => {
-			const next = consumeAuthReturnPath() || "/";
+			const next = consumeAuthReturnPath() || "/dashboard";
 			window.location.replace(next);
 		});
 	}, [params]);

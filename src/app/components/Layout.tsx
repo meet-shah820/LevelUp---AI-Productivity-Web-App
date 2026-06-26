@@ -161,7 +161,7 @@ export function Layout() {
   const nav = useMemo(() => {
     const t = tierRank(tier);
     return [
-      { name: "Dashboard", href: "/", icon: LayoutDashboard },
+      { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { name: "Quests", href: "/quests", icon: Target },
       { name: "Goals", href: "/goals", icon: Flag },
       { name: "Achievements", href: "/achievements", icon: Trophy },
@@ -214,10 +214,10 @@ export function Layout() {
         }
         break;
       case "level":
-        navigate("/?highlightLevel=1");
+        navigate("/dashboard?highlightLevel=1");
         break;
       default:
-        navigate("/");
+        navigate("/dashboard");
     }
     setNotifOpen(false);
     // Mark as seen when interacting with a notification.
@@ -274,7 +274,7 @@ export function Layout() {
               <NavLink
                 key={item.name}
                 to={item.href}
-                end={item.href === "/"}
+                end={item.href === "/dashboard"}
                 onClick={() => playUiClick()}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-3 rounded-xl transition-all group relative ${
@@ -363,7 +363,7 @@ export function Layout() {
                     <NavLink
                       key={item.name}
                       to={item.href}
-                      end={item.href === "/"}
+                      end={item.href === "/dashboard"}
                       onClick={() => {
                         playUiClick();
                         setMobileMenuOpen(false);
@@ -523,7 +523,7 @@ export function Layout() {
           </div>
         </header>
 
-        {/* Page Content — tutorial docks in this region (top-right while “New program” is open) */}
+        {/* Page Content — tutorial docks in this region (top-right while “New goal” is open) */}
         <main className="flex-1 overflow-auto" data-tutorial="page-main">
           <EffectiveTierProvider
             billedTier={(billing?.tier as Tier) || "free"}

@@ -120,7 +120,14 @@ export async function createGoal(payload: {
 				typeof body.needsTier === "string" ? body.needsTier : undefined
 			);
 		}
-		throw new Error(typeof body.error === "string" ? body.error : "Failed to create goal");
+		if (res.status === 429 && body.error === "rate_limited") {
+			throw new Error(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "Too many AI generations. Please wait and try again.",
+			);
+		}
+		throw new Error(typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "Failed to create goal");
 	}
 	return body;
 }
@@ -178,7 +185,7 @@ export type GoalProgramModule = {
 
 export async function getGoalProgramModules(): Promise<{ modules: GoalProgramModule[] }> {
 	const res = await apiFetch("/api/goals/program-modules");
-	if (!res.ok) throw new Error("Failed to load program modules");
+	if (!res.ok) throw new Error("Failed to load goal modules");
 	return res.json();
 }
 
@@ -230,11 +237,18 @@ export async function updateGoal(
 			throw new TierRequiredError(
 				typeof body.message === "string" && body.message.trim()
 					? body.message.trim()
-					: "Upgrade your plan for AI program updates.",
+					: "Upgrade your plan for AI goal updates.",
 				typeof body.needsTier === "string" ? body.needsTier : undefined
 			);
 		}
-		throw new Error(typeof body.error === "string" ? body.error : "Failed to update goal");
+		if (res.status === 429 && body.error === "rate_limited") {
+			throw new Error(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "Too many AI generations. Please wait and try again.",
+			);
+		}
+		throw new Error(typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "Failed to update goal");
 	}
 	return body;
 }
@@ -258,7 +272,14 @@ export async function refreshGoalQuests(goalId: string) {
 				Array.isArray(body.suggestions) ? body.suggestions : []
 			);
 		}
-		throw new Error(typeof body.error === "string" ? body.error : "Failed to refresh quests");
+		if (res.status === 429 && body.error === "rate_limited") {
+			throw new Error(
+				typeof body.message === "string" && body.message.trim()
+					? body.message
+					: "Too many AI generations. Please wait and try again.",
+			);
+		}
+		throw new Error(typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "Failed to refresh quests");
 	}
 	return body;
 }

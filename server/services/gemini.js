@@ -1688,7 +1688,7 @@ The user should always know exactly what to do next.`;
 
 		const mappedPlan = {
 			goalRestated: String(goalTitle || "").trim().slice(0, 500),
-			currentPhase: String(system?.roadmap?.[0]?.phase_name || "Program").trim().slice(0, 80),
+			currentPhase: String(system?.roadmap?.[0]?.phase_name || "Goal").trim().slice(0, 80),
 			progressionRule:
 				"Advance when weekly completion rate stays above 85% for two consecutive weeks; deload when under 50%.",
 			dailyQuests: mapList(daily, "daily", 80),

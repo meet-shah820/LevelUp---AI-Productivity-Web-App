@@ -9,7 +9,7 @@ const DEFAULT_SUGGESTIONS = [
 ];
 
 const USER_MESSAGE_OFF =
-	"This app only builds training programs for fitness and exercise goals — strength, cardio, conditioning, athletic prep, and related nutrition tied to training. Your goal sounds like a different topic.";
+	"This app only builds training goals for fitness and exercise — strength, cardio, conditioning, athletic prep, and related nutrition tied to training. Your goal sounds like a different topic.";
 
 /**
  * Fast path before Gemini.

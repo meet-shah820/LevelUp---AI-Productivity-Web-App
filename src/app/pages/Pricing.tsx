@@ -220,13 +220,15 @@ export default function Pricing() {
 							<>
 								<div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
 									<span className="text-3xl font-bold text-white tracking-tight">
-										{formatMoney(annualCents, currency)}
+										{formatMoney(annualMonthlyEq > 0 ? annualMonthlyEq : annualCents, currency)}
 									</span>
-									<span className="text-gray-500 text-sm font-medium">/ yr</span>
+									<span className="text-gray-500 text-sm font-medium">
+										{annualMonthlyEq > 0 ? "/ mo" : "/ yr"}
+									</span>
 								</div>
-								{annualMonthlyEq > 0 ? (
+								{annualCents > 0 && annualMonthlyEq > 0 ? (
 									<p className="text-sm text-gray-500 mt-1.5">
-										≈ {formatMoney(annualMonthlyEq, currency)}/mo billed annually
+										{formatMoney(annualCents, currency)}/yr billed annually
 									</p>
 								) : null}
 								{(tier.annualSavingsCents ?? 0) > 0 ? (
@@ -353,7 +355,7 @@ export default function Pricing() {
 					<Button
 						type="button"
 						variant="ghost"
-						onClick={() => navigate("/")}
+						onClick={() => navigate("/dashboard")}
 						className="absolute left-0 top-0 z-10 text-gray-500 hover:text-white hover:bg-white/[0.05] -ml-2 gap-2 h-8 text-sm"
 					>
 						<LayoutDashboard className="w-4 h-4" />
@@ -366,10 +368,6 @@ export default function Pricing() {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center space-y-2.5 pt-8 sm:pt-0"
 					>
-					<div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-400/25 text-[10px] font-bold uppercase tracking-[0.15em] text-violet-300">
-						<Sparkles className="w-3.5 h-3.5" />
-						Recommended pricing
-					</div>
 					<h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-b from-violet-200 to-violet-400/80 bg-clip-text text-transparent">
 						Choose your tier
 					</h1>

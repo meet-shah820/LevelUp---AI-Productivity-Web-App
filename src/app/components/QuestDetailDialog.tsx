@@ -153,12 +153,12 @@ export function QuestDetailDialog({ open, onOpenChange, questId }: Props) {
               <span className="flex items-center gap-2 mt-1">
                 <Target className="w-4 h-4 shrink-0 text-purple-400" />
                 <span>
-                  Program: <span className="text-gray-200">{g.title}</span>
+                  Goal: <span className="text-gray-200">{g.title}</span>
                   <span className="text-gray-500"> · {g.category}</span>
                 </span>
               </span>
             ) : (
-              "Full briefing from the program engine"
+              "Full briefing from the goal engine"
             )}
           </DialogDescription>
           {q && (

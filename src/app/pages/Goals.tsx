@@ -177,7 +177,7 @@ export default function Goals() {
       goals.length >= 1 &&
       !tierMeetsMinimum(effectiveTier, TIER_FOR.secondActiveGoal)
     ) {
-      toast.message("Starter and above unlock multiple active training programs.", { duration: 5000 });
+      toast.message("Starter and above unlock multiple active goals.", { duration: 5000 });
       navigate("/pricing?need=starter");
       return;
     }
@@ -226,9 +226,9 @@ export default function Goals() {
           setGoals(mapServerGoals(res.goals));
           window.dispatchEvent(new CustomEvent(RANK_UPDATED_EVENT));
           if (result.realigned) {
-            toast.success("Program updated. Quests from tomorrow will match your changes.");
+            toast.success("Goal updated. Quests from tomorrow will match your changes.");
           } else {
-            toast.success("Program updated.");
+            toast.success("Goal updated.");
           }
           setEditingGoal(null);
         } catch (e) {
@@ -370,7 +370,7 @@ export default function Goals() {
     return diffDays;
   };
 
-  const multiProgramLocked =
+  const multiGoalLocked =
     billingResolved &&
     goals.length >= 1 &&
     !tierMeetsMinimum(effectiveTier, TIER_FOR.secondActiveGoal);
@@ -386,25 +386,25 @@ export default function Goals() {
         <div className="space-y-2">
           <h1 className="text-3xl font-bold text-white">Goals</h1>
           <p className="text-gray-400">
-            Build training programs and get daily, weekly, and monthly fitness quests from the program engine
+            Build training goals and get daily, weekly, and monthly fitness quests from the goal engine
           </p>
         </div>
         <Button
           data-tutorial="add-goal"
-          disabled={multiProgramLocked}
-          title={multiProgramLocked ? "Upgrade to Starter for a second active program" : undefined}
+          disabled={multiGoalLocked}
+          title={multiGoalLocked ? "Upgrade to Starter for a second active goal" : undefined}
           onClick={handleAddGoal}
           className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
         >
           <Plus className="w-5 h-5 mr-2" />
-          Add program
+          Add goal
         </Button>
       </motion.div>
 
-      {multiProgramLocked ? (
+      {multiGoalLocked ? (
         <Card className="bg-amber-500/10 border-amber-500/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-sm text-amber-100">
-            Your Free plan keeps one active program. Starter unlocks multiple active programs plus deeper quest tools shown on
+            Your Free plan keeps one active goal. Starter unlocks multiple active goals plus deeper quest tools shown on
             Quests.
           </p>
           <Button
@@ -432,7 +432,7 @@ export default function Goals() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{goals.length}</p>
-                <p className="text-xs text-gray-400">Active programs</p>
+                <p className="text-xs text-gray-400">Active goals</p>
               </div>
             </div>
           </Card>
@@ -486,9 +486,9 @@ export default function Goals() {
         >
           <Card className="bg-[#111827] border-purple-500/20 p-12 text-center">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">No programs yet</h3>
+            <h3 className="text-xl font-bold text-white mb-2">No goals yet</h3>
             <p className="text-gray-400 mb-6">
-              Add a program (strength, conditioning, fat loss, race prep) and the app will seed progressive fitness quests
+              Add a goal (strength, conditioning, fat loss, race prep) and the app will seed progressive fitness quests
             </p>
             <Button
               data-tutorial="add-goal"
@@ -496,7 +496,7 @@ export default function Goals() {
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >
               <Plus className="w-5 h-5 mr-2" />
-              Add your first program
+              Add your first goal
             </Button>
           </Card>
         </motion.div>
@@ -542,7 +542,7 @@ export default function Goals() {
                           variant="ghost"
                           onClick={() => handleEditGoal(goal)}
                           className="w-8 h-8 text-gray-400 hover:text-white"
-                          aria-label="Edit program"
+                          aria-label="Edit goal"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
@@ -567,7 +567,7 @@ export default function Goals() {
                     {/* Progress */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Program progress</span>
+                        <span className="text-gray-400">Goal progress</span>
                         <span className="text-white font-medium">{goal.progress}%</span>
                       </div>
                       <Progress value={goal.progress} className="h-2" />
@@ -628,11 +628,11 @@ export default function Goals() {
       >
         <AlertDialogContent className="bg-[#111827] border-purple-500/30 text-white sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Delete this training program?</AlertDialogTitle>
+            <AlertDialogTitle className="text-white">Delete this training goal?</AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
               {goalPendingDelete ? (
                 <>
-                  <span className="font-medium text-gray-300">"{goalPendingDelete.title}"</span> will be removed from your active programs. You can cancel if you clicked by mistake.
+                  <span className="font-medium text-gray-300">"{goalPendingDelete.title}"</span> will be removed from your active goals. You can cancel if you clicked by mistake.
                 </>
               ) : null}
             </AlertDialogDescription>
@@ -651,13 +651,13 @@ export default function Goals() {
               className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600 border-0 sm:mt-0"
               onClick={handleConfirmDeleteGoal}
             >
-              {deleteInProgress ? "Deleting…" : "Delete program"}
+              {deleteInProgress ? "Deleting…" : "Delete goal"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add/Edit training program dialog */}
+      {/* Add/Edit training goal dialog */}
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {
@@ -667,14 +667,14 @@ export default function Goals() {
       >
         <DialogContent
           className="bg-[#111827] border-purple-500/30 text-white max-w-md flex max-h-[min(90dvh,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
-          data-tutorial="program-create-dialog"
+          data-tutorial="goal-create-dialog"
         >
           <DialogHeader className="shrink-0 px-6 pt-6 pb-4 text-left">
-            <DialogTitle>{editingGoal ? "Edit program" : "New program"}</DialogTitle>
+            <DialogTitle>{editingGoal ? "Edit goal" : "New goal"}</DialogTitle>
             <DialogDescription className="text-gray-400">
               {editingGoal
-                ? "Update your program details. Today's quests stay as they are; from tomorrow onward, quests will be regenerated to match your changes."
-                : "Every program is fitness-only: daily missions, weekly checkpoints, monthly milestones, plus recovery quests if you fall behind"}
+                ? "Update your goal details. Today's quests stay as they are; from tomorrow onward, quests will be regenerated to match your changes."
+                : "Every goal is fitness-only: daily missions, weekly checkpoints, monthly milestones, plus recovery quests if you fall behind"}
             </DialogDescription>
           </DialogHeader>
 
@@ -698,7 +698,7 @@ export default function Goals() {
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="title">Program title</Label>
+              <Label htmlFor="title">Goal title</Label>
               <Input
                 id="title"
                 placeholder="e.g., Add 40 lb to squat in 12 weeks"
@@ -863,7 +863,7 @@ export default function Goals() {
               disabled={!formData.title}
               className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-80"
             >
-              {editingGoal ? "Update program" : "Create program"}
+              {editingGoal ? "Update goal" : "Create goal"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -27,7 +27,7 @@ function mapHistoryDoc(doc) {
 			return {
 				id: String(doc._id),
 				type: "quest",
-				message: meta.title || "Onboarding quest: first training program",
+				message: meta.title || "Onboarding quest: first training goal",
 				xp: doc.xpChange,
 				at: new Date(at).toISOString(),
 			};

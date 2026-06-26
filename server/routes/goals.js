@@ -4,6 +4,7 @@ import Goal from "../models/Goal.js";
 import Quest from "../models/Quest.js";
 import User from "../models/User.js";
 import { getUserForReq } from "../utils/demoUser.js";
+import { geminiGenerationRateLimit } from "../middleware/geminiRateLimit.js";
 import {
 	generateFitnessSystemFromRoadmap,
 	generateSupplementalFitnessRichQuests,
@@ -804,7 +805,7 @@ router.get("/program-modules", async (req, res) => {
 			return res.status(403).json({
 				error: "tier_required",
 				needsTier: "starter",
-				message: "Program schedule insights require Starter or higher.",
+				message: "Goal schedule insights require Starter or higher.",
 			});
 		}
 		let goals = await Goal.find({ userId: user._id, status: "active" })
@@ -864,12 +865,12 @@ router.get("/program-modules", async (req, res) => {
 	} catch (e) {
 		// eslint-disable-next-line no-console
 		console.error(e);
-		return res.status(500).json({ error: "Failed to load program modules" });
+		return res.status(500).json({ error: "Failed to load goal modules" });
 	}
 });
 
 // POST /api/goals
-router.post("/", async (req, res) => {
+router.post("/", geminiGenerationRateLimit, async (req, res) => {
 	try {
 		const {
 			title,
@@ -894,7 +895,7 @@ router.post("/", async (req, res) => {
 				error: "tier_required",
 				needsTier: "starter",
 				code: "multi_goals_starter_only",
-				message: "Adding another active program requires Starter or higher.",
+				message: "Adding another active goal requires Starter or higher.",
 			});
 		}
 		const goalCategory = "Fitness";
@@ -995,7 +996,7 @@ router.post("/", async (req, res) => {
 					userId: user._id,
 					type: "first_goal_bonus",
 					xpChange: ONBOARDING_FIRST_PROGRAM_XP,
-					meta: { title: "Onboarding quest: first training program" },
+					meta: { title: "Onboarding quest: first training goal" },
 				});
 			}
 			try {
@@ -1036,7 +1037,7 @@ router.post("/", async (req, res) => {
 });
 
 // PATCH /api/goals/:id — persist edits; re-run AI quest plan when title, description, or deadline change (Fitness)
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", geminiGenerationRateLimit, async (req, res) => {
 	try {
 		const { id } = req.params;
 		if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1137,7 +1138,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // POST /api/goals/:id/refresh-quests — regenerate AI plan + replace incomplete future quests for this goal
-router.post("/:id/refresh-quests", async (req, res) => {
+router.post("/:id/refresh-quests", geminiGenerationRateLimit, async (req, res) => {
 	try {
 		const { id } = req.params;
 		if (!mongoose.Types.ObjectId.isValid(id)) {

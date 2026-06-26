@@ -14,7 +14,7 @@ export default function Terms() {
 				<h2>2. Description of Service</h2>
 				<p>LevelUp is a fitness-focused quest and training app where users:</p>
 				<ul>
-					<li>Create training programs</li>
+					<li>Create training goals</li>
 					<li>Complete daily, weekly, and monthly fitness quests</li>
 					<li>Log training-focus sessions and streaks</li>
 					<li>Unlock training achievements and Hunter rank milestones</li>

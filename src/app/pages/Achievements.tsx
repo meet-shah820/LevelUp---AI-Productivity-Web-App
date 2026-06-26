@@ -126,7 +126,7 @@ export default function Achievements() {
       >
         <h1 className="text-3xl font-bold text-white">Achievements</h1>
         <p className="text-gray-400">
-          Training milestones for your program: quests, streaks, XP, and Hunter rank
+          Training milestones for your goals: quests, streaks, XP, and Hunter rank
         </p>
       </motion.div>
 
@@ -242,7 +242,7 @@ export default function Achievements() {
                     <p className="text-xs text-gray-400">{achievement.description}</p>
                     {achievement.blockedByCategory ? (
                       <p className="text-xs text-amber-400/90 mt-2">
-                        Requires an active <span className="font-medium">{achievement.blockedByCategory}</span> program
+                        Requires an active <span className="font-medium">{achievement.blockedByCategory}</span> goal
                       </p>
                     ) : null}
                   </div>

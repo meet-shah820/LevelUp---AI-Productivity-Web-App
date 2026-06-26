@@ -250,15 +250,15 @@ type Props = {
 	highlightGoalId?: string;
 };
 
-export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
+export function GoalModulesPanel({ modules, highlightGoalId }: Props) {
 	const [detail, setDetail] = useState<ModuleDetail | null>(null);
 	const dialogOpen = detail !== null;
 
 	if (!modules.length) {
 		return (
 			<Card className="border-purple-500/20 bg-[#0d111c]/90 p-4 text-sm text-gray-400">
-				<p className="font-medium text-gray-300 mb-1">Program modules</p>
-				<p>No active training programs. Add a program to see schedule and movement details here.</p>
+				<p className="font-medium text-gray-300 mb-1">Goal modules</p>
+				<p>No active goals. Add a goal to see schedule and movement details here.</p>
 			</Card>
 		);
 	}
@@ -327,7 +327,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 
 								{(profile?.goal || profile?.level || profile?.days_per_week != null) && (
 									<div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-1 text-sm">
-										<p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Program summary</p>
+										<p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Goal summary</p>
 										{profile?.goal ? <p className="text-gray-200">{String(profile.goal)}</p> : null}
 										<div className="flex flex-wrap gap-2 pt-1">
 											{profile?.level ? (
@@ -546,8 +546,8 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									) : null}
 									{!monthly.length && !weekly.length && !daily.length ? (
 										<p className="text-sm text-gray-500 italic">
-											Detailed schedule blocks appear here for programs created with the current generator. Older goals may only
-											show summary lines until you add a new program.
+											Detailed schedule blocks appear here for goals created with the current generator. Older goals may only
+											show summary lines until you add a new goal.
 										</p>
 									) : null}
 								</div>
@@ -567,7 +567,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									{cache?.source === "goal_library_fallback" ? (
 										<p className="text-xs text-amber-100/85 bg-amber-500/10 border border-amber-500/25 rounded-md p-2 leading-relaxed">
 											These exercises were matched from your <strong className="font-medium text-amber-50">local reference library</strong>{" "}
-											using your goal text. When the AI program includes daily workout rows, this section merges those names with
+											using your goal text. When the AI goal plan includes daily workout rows, this section merges those names with
 											library + open reference data and saves everything on this goal.
 										</p>
 									) : null}
@@ -597,11 +597,11 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 											</div>
 										) : useEnriched && enrichedList.length > 0 ? (
 											<p className="text-sm text-gray-500 italic leading-relaxed">
-												No movements matched the current quest window yet. Expand full program below when available.
+												No movements matched the current quest window yet. Expand full goal below when available.
 											</p>
 										) : !useEnriched && snapshotOnlyMovements.length > 0 ? (
 											<p className="text-sm text-gray-500 italic leading-relaxed">
-												Enriched tiles appear after the server saves merged movements. Snapshot exercises are in the full program
+												Enriched tiles appear after the server saves merged movements. Snapshot exercises are in the full goal
 												section below.
 											</p>
 										) : (
@@ -610,7 +610,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									</ProgramModulesCollapsibleSection>
 
 									<ProgramModulesCollapsibleSection
-										title="Full program (entire goal)"
+										title="Full goal"
 										subtitle="Every exercise and activity planned for this goal."
 										titleClassName="text-violet-300/90"
 									>
@@ -652,7 +652,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 											</div>
 										) : (
 											<p className="text-sm text-gray-500 leading-relaxed">
-												No exercise detail saved yet. Open Program modules again after the server merges library data, or run{" "}
+												No exercise detail saved yet. Open Goal modules again after the server merges library data, or run{" "}
 												<code className="text-gray-400 bg-white/5 px-1 rounded">npm run ingest:fitness</code> to load reference data,
 												then reload.
 											</p>
@@ -705,7 +705,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									<div className="min-w-0">
 										<span className="block text-xl font-bold leading-tight">{detail.mv.name}</span>
 										<span className="text-sm text-gray-400 font-normal">
-											{detail.scope === "rotation" ? "Current rotation" : "Full program"}
+											{detail.scope === "rotation" ? "Current rotation" : "Full goal"}
 										</span>
 									</div>
 								</DialogTitle>
@@ -726,7 +726,7 @@ export function ProgramModulesPanel({ modules, highlightGoalId }: Props) {
 									</div>
 									<span className="text-xl font-bold leading-tight">{detail.mv.name}</span>
 								</DialogTitle>
-								<DialogDescription className="sr-only">Exercise details from your generated program</DialogDescription>
+								<DialogDescription className="sr-only">Exercise details from your generated goal</DialogDescription>
 							</DialogHeader>
 							<SnapshotMovementDetailBody mv={detail.mv} />
 						</>

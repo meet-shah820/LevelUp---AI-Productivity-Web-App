@@ -21,7 +21,7 @@ import { trackQuestCompleted, trackQuestReverted } from "../analytics/posthog";
 import { celebrationsFromQuestCompleteResponse, dispatchCelebrations } from "../utils/celebration";
 import { dispatchQuestCompleteSounds, playSound } from "../audio/sounds";
 import { useTutorialOptional } from "../tutorial/TutorialContext";
-import { ProgramModulesPanel } from "../components/ProgramModulesPanel";
+import { GoalModulesPanel } from "../components/GoalModulesPanel";
 import { cn } from "../components/ui/utils";
 import { useEffectiveTier } from "../context/EffectiveTierContext";
 import { tierMeetsMinimum, TIER_FOR } from "../utils/tierFeatures";
@@ -241,7 +241,7 @@ function QuestCard({
                 {quest.description
                   ? quest.description
                   : MONGO_OBJECT_ID_RE.test(quest.id)
-                    ? "Open the card for your full workout briefing from the program engine."
+                    ? "Open the card for your full workout briefing from the goal engine."
                     : "—"}
               </p>
             </div>
@@ -259,7 +259,7 @@ function QuestCard({
                 <Target className="w-3 h-3 text-white" />
               </div>
               <span className="text-xs text-gray-400">
-                Program: <span className="text-white">{goal.title}</span>
+                Goal: <span className="text-white">{goal.title}</span>
               </span>
             </div>
           )}
@@ -691,13 +691,13 @@ export default function Quests() {
 
   return (
     <div className="min-h-full p-4 lg:p-8 space-y-6">
-      {/* Title row + expandable program modules (schedule & movement library — not quest instances) */}
+      {/* Title row + expandable goal modules (schedule & movement library — not quest instances) */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="space-y-2 min-w-0 flex-1">
             <h1 className="text-3xl font-bold text-white">Quests</h1>
             <p className="text-gray-400 text-sm sm:text-base max-w-xl">
-              Execute missions, earn XP, and level your training programs
+              Execute missions, earn XP, and level your training goals
             </p>
           </div>
           <div className="shrink-0 flex justify-start sm:justify-end w-full sm:w-auto pt-1">
@@ -716,11 +716,11 @@ export default function Quests() {
               title={
                 showProgramModulesTier
                   ? undefined
-                  : "Starter unlocks the expandable program module detail (schedule & movement library)."
+                  : "Starter unlocks the expandable goal module detail (schedule & movement library)."
               }
             >
               <BookOpen className="w-4 h-4 shrink-0 text-purple-300" aria-hidden />
-              Program modules
+              Goal modules
               {!showProgramModulesTier ? <span className="text-[10px] text-amber-300/90">· Starter</span> : null}
               <ChevronDown
                 className={cn("w-4 h-4 text-gray-400 transition-transform", programModulesOpen && "rotate-180")}
@@ -730,7 +730,7 @@ export default function Quests() {
           </div>
         </div>
         {programModulesOpen && showProgramModulesTier ? (
-          <ProgramModulesPanel modules={programModules} highlightGoalId={goalIdFilter || undefined} />
+          <GoalModulesPanel modules={programModules} highlightGoalId={goalIdFilter || undefined} />
         ) : null}
       </motion.div>
 
@@ -750,10 +750,10 @@ export default function Quests() {
                 <Badge className="bg-indigo-500/35 text-indigo-100 border-indigo-400/45 hover:bg-indigo-500/35">
                   Onboarding quest
                 </Badge>
-                <h2 className="text-lg font-bold text-white leading-snug">Add your first training program</h2>
+                <h2 className="text-lg font-bold text-white leading-snug">Add your first training goal</h2>
                 <p className="text-sm text-gray-300 leading-relaxed">
-                  Open <span className="text-white font-medium">Goals</span> from the sidebar, create a program, and
-                  come back here — your daily, weekly, and monthly quests will populate once the program exists. You will
+                  Open <span className="text-white font-medium">Goals</span> from the sidebar, create a goal, and
+                  come back here — your daily, weekly, and monthly quests will populate once the goal exists. You will
                   earn XP when you finish.
                 </p>
               </div>
@@ -970,10 +970,10 @@ export default function Quests() {
                   onValueChange={(v) => setGoalIdFilter(v === "all" ? null : v)}
                 >
                   <SelectTrigger className="w-full sm:w-[min(100%,240px)] bg-[#111827] border-purple-500/30 text-white">
-                    <SelectValue placeholder="Filter by program" />
+                    <SelectValue placeholder="Filter by goal" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#111827] border-purple-500/30 text-white max-h-72">
-                    <SelectItem value="all">All programs</SelectItem>
+                    <SelectItem value="all">All goals</SelectItem>
                     {goals.map((g) => (
                       <SelectItem key={g.id} value={g.id}>
                         {g.title}
@@ -1011,8 +1011,8 @@ export default function Quests() {
                 </h3>
                 <p className="text-gray-400">
                   {quests.length === 0
-                    ? "Create a training program to generate daily, weekly, and monthly quests"
-                    : "Try another program or difficulty filter."}
+                    ? "Create a training goal to generate daily, weekly, and monthly quests"
+                    : "Try another goal or difficulty filter."}
                 </p>
               </Card>
             ) : (

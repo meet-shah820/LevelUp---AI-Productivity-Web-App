@@ -9,6 +9,7 @@ import Profile from "./pages/Profile";
 import Achievements from "./pages/Achievements";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
+import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import Privacy from "./pages/Privacy";
@@ -54,15 +55,15 @@ export const router = createBrowserRouter([
   { path: "/legal/terms", Component: RedirectToTerms },
   { path: "/legal/cookies", Component: CookiePolicy },
   { path: "/legal/refunds", Component: RefundPolicy },
+  { path: "/", Component: Landing },
   {
     path: "/",
     Component: ProtectedLayout,
     children: [
       {
-        path: "/",
         Component: Layout,
         children: [
-          { index: true, Component: Dashboard },
+          { path: "dashboard", Component: Dashboard },
           { path: "quests", Component: Quests },
           { path: "goals", Component: Goals },
           { path: "skills", Component: RedirectSkillsToAchievements },

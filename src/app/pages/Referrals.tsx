@@ -19,7 +19,7 @@ type ReferralData = {
 
 const MILESTONE_LABELS: Record<string, string> = {
 	signup: "Signed up",
-	first_program: "First program",
+	first_program: "First goal",
 	first_quest: "First quest",
 };
 
@@ -121,7 +121,7 @@ export default function Referrals() {
 						<span className="text-sm text-gray-400">Activated hunters</span>
 					</div>
 					<p className="text-3xl font-bold text-white tabular-nums">{data?.stats.activated ?? 0}</p>
-					<p className="text-xs text-gray-500 mt-1">Started a program or completed a quest</p>
+					<p className="text-xs text-gray-500 mt-1">Started a goal or completed a quest</p>
 				</Card>
 				<Card className="bg-[#111827] border-purple-500/20 p-5">
 					<div className="flex items-center gap-3 mb-2">
