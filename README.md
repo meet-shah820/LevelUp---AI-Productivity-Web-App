@@ -1,6 +1,12 @@
 # LevelUp — Gamified Fitness Training & Quests
 
+🔗 **Live app:** https://levelup-productivity-web-app.vercel.app
+📄 **Article:** https://repo-explainer.com/meet-shah820/LevelUp---AI-Productivity-Web-App
+
 LevelUp turns fitness goals into a Hunter-style progression game. Set a training goal, get an AI-built quest roadmap, complete daily/weekly/monthly missions for XP, climb ranks from **E → S**, unlock achievements, and compete on a live leaderboard.
+
+<img width="771" height="746" alt="Screenshot 2026-06-26 235419" src="https://github.com/user-attachments/assets/bb48b142-c82f-4a9b-ac65-dfc5e101e11d" />
+
 
 The UI started from a [Figma design](https://www.figma.com/design/XdDOD1f3gol3DLV4nHgVT3/Gamified-Productivity-Web-App) and has since grown into a full-stack product with billing, referrals, analytics, and real-time features.
 
