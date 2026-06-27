@@ -80,16 +80,10 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
-    "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "4.7.0",
     "concurrently": "^9.1.2",
     "tailwindcss": "4.1.12",
     "vite": "^6.4.1"
   },
-  "peerDependenciesMeta": {},
-  "pnpm": {
-    "overrides": {
-      "vite": "6.3.5"
-    }
-  }
+  "peerDependenciesMeta": {}
 }
