@@ -118,6 +118,19 @@ export function Layout() {
     return () => window.removeEventListener(SITE_ADMIN_BYPASS_UPDATED_EVENT, onBypass);
   }, []);
 
+  // Keep scroll inside <main> on mobile — prevents the header from scrolling off-screen.
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    html.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function loadHeaderData() {
@@ -234,7 +247,7 @@ export function Layout() {
 
   return (
     <TutorialProvider>
-    <div className="h-screen flex overflow-hidden bg-[#0B0F1A]">
+    <div className="h-dvh max-h-dvh flex overflow-hidden bg-[#0B0F1A]">
       {/* Desktop Sidebar */}
       <motion.aside
         initial={false}
@@ -388,9 +401,9 @@ export function Layout() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar */}
-        <header className="h-20 bg-[#111827]/50 backdrop-blur-xl border-b border-purple-500/20 flex items-center justify-between px-4 lg:px-8 relative z-50">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0 min-w-0">
+        {/* Top Bar — shrink-0 keeps it out of the main scroll region */}
+        <header className="shrink-0 h-20 bg-[#111827]/95 backdrop-blur-xl border-b border-purple-500/20 flex items-center justify-between px-4 lg:px-8 relative z-50">
           <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-blue-500/5 pointer-events-none" />
 
           <div className="flex items-center gap-4 relative z-10">
@@ -524,7 +537,10 @@ export function Layout() {
         </header>
 
         {/* Page Content — tutorial docks in this region (top-right while “New goal” is open) */}
-        <main className="flex-1 overflow-auto" data-tutorial="page-main">
+        <main
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+          data-tutorial="page-main"
+        >
           <EffectiveTierProvider
             billedTier={(billing?.tier as Tier) || "free"}
             effectiveTier={tier}
